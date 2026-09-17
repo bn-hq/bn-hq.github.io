@@ -30,8 +30,9 @@ header small{color:var(--ink2);font-size:12px;text-transform:uppercase;letter-sp
 .who{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px;color:var(--ink2)}
 .who b{color:var(--ink)}
 .who button{border:0;background:none;color:var(--purple);font:600 12px "Public Sans",sans-serif;cursor:pointer;padding:0;text-decoration:underline}
-.tabs{display:flex;gap:4px;margin-top:12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:4px;overflow-x:auto}
-.tabs button{flex:1;min-width:64px;border:0;background:transparent;color:var(--ink2);font:600 13px "Public Sans",sans-serif;padding:9px 6px;border-radius:9px;cursor:pointer;white-space:nowrap}
+.tabs{display:flex;flex-wrap:wrap;gap:4px;margin-top:12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:4px}
+.tabs button{flex:1 1 calc(25% - 4px);min-width:0;border:0;background:transparent;color:var(--ink2);font:600 13px "Public Sans",sans-serif;padding:10px 4px;border-radius:9px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (min-width:600px){.tabs button{flex:1 1 auto}}
 .tabs button[aria-selected="true"]{background:var(--purple);color:#fff}
 .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
 .chip{border:1px solid var(--line);background:var(--panel);color:var(--ink2);border-radius:999px;padding:5px 11px;font:600 12px "Public Sans",sans-serif;cursor:pointer}
@@ -171,8 +172,8 @@ header small{color:var(--ink2);font-size:12px;text-transform:uppercase;letter-sp
     <button role="tab" aria-selected="false" data-mode="quiz">Drill</button>
     <button role="tab" aria-selected="false" data-mode="recite">Recite</button>
     <button role="tab" aria-selected="false" data-mode="tasks">Tasks</button>
-    <button role="tab" aria-selected="false" data-mode="facts">DSP facts</button>
-    <button role="tab" aria-selected="false" data-mode="acct">Accountability</button>
+    <button role="tab" aria-selected="false" data-mode="facts">Facts</button>
+    <button role="tab" aria-selected="false" data-mode="acct">Scores</button>
     <button role="tab" aria-selected="false" data-mode="log">Log</button>
   </div>
 
