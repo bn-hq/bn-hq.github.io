@@ -1,6 +1,6 @@
 # Beta Nu Pledge HQ
 
-Our pledge class site. Live at https://bn-pledge-hq.github.io/
+Our pledge class site. Live at https://bn-hq.github.io/
 
 Three files, no build step:
 
