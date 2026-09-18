@@ -1,7 +1,3 @@
-# Beta Nu Pledge HQ
-
-Our pledge class site. Live at https://bn-hq.github.io/
-
 Three files, no build step:
 
 - `index.html` – layout
