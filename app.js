@@ -1,0 +1,440 @@
+// ---------- state (Firebase Realtime Database via REST) ----------
+const DB='https://pledge-675b2-default-rtdb.firebaseio.com';
+const SEED = JSON.parse(document.getElementById('seed').textContent);
+let S = {version:0,cards:[],log:[],facts:[],tasks:[],recitals:[],passages:SEED.passages,drill:{},guide:[]};
+let loaded=false;
+const key = s => String(s).replace(/[.#$\[\]\/]/g,'_');
+const objToArr = (o,sortKey) => { const a=Object.entries(o||{}).map(([k,v])=>Object.assign({_k:k},v)); if(sortKey) a.sort((x,y)=>(x[sortKey]??0)-(y[sortKey]??0)); return a; };
+function fromDb(d){
+  d=d||{};
+  const cards=objToArr(d.cards,'order'); cards.forEach(c=>{ c.extra=c.extra||{}; });
+  const byAtDesc=(a,b)=>(a.at<b.at?1:-1);
+  return { version:d.version||0, cards, log:objToArr(d.log).sort(byAtDesc), facts:objToArr(d.facts,'order'), tasks:objToArr(d.tasks).sort((a,b)=>(a.due||'9999')<(b.due||'9999')?-1:1), recitals:objToArr(d.recitals).sort(byAtDesc), guide:objToArr(d.guide,'order'), passages: d.passages? objToArr(d.passages,'order') : SEED.passages, drill:d.drill||{} };
+}
+async function dbGet(path){ const r=await fetch(DB+'/'+path+'.json',{cache:'no-store'}); if(!r.ok) throw new Error('read '+r.status); return r.json(); }
+async function dbWrite(method,path,body){ const r=await fetch(DB+'/'+path+'.json',{method,body:body===undefined?undefined:JSON.stringify(body)}); if(!r.ok) throw new Error('write '+r.status); return r.json(); }
+const KEYS=['version','cards','log','facts','tasks','recitals','passages','drill','guide'];
+async function loadPhotos(){
+  if(Object.keys(URIS).length) return;
+  try{ const c=localStorage.getItem('bn-photos'); if(c){ URIS=JSON.parse(c); if(Object.keys(URIS).length) { checkPhotoVersion(); return; } } }catch(e){}
+  try{ URIS=await dbGet('photos')||{}; try{ localStorage.setItem('bn-photos',JSON.stringify(URIS)); localStorage.setItem('bn-photos-v',String(await dbGet('photosVersion')||1)); }catch(e){} }catch(e){}
+}
+async function checkPhotoVersion(){ try{ const v=String(await dbGet('photosVersion')||1); if(localStorage.getItem('bn-photos-v')!==v){ URIS=await dbGet('photos')||{}; localStorage.setItem('bn-photos',JSON.stringify(URIS)); localStorage.setItem('bn-photos-v',v); render(); } }catch(e){} }
+async function refresh(){ try{ const vals=await Promise.all(KEYS.map(k=>dbGet(k))); const d={}; KEYS.forEach((k,i)=>d[k]=vals[i]); if(d && d.cards){ S=fromDb(d); } loaded=true; setStatus(''); }catch(e){ setStatus('Offline: could not reach the database ('+e.message+'). Showing last loaded data.'); loaded=true; } }
+
+function setStatus(t){ const el=document.getElementById('sync'); if(el){ el.textContent=t; el.hidden=!t; } }
+const FIELDS = [['cls','Pledge class'],['home','Hometown'],['major','Year / major'],['hs','High school'],['summer','Summer 2026'],['past','Past internships'],['clubs','Clubs'],['notes','Fun facts / openers'],['pets','Pets'],['siblings','Siblings'],['parents','Parents'],['grandparents','Grandparents'],['lineage','DSP lineage (big / little)']];
+let URIS = {};
+const IMG = s => URIS[s] || '';
+const esc = s => String(s??'').replace(/[&<>"]/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+const uid = () => Math.random().toString(36).slice(2,9);
+
+let stars = {}; try { stars = JSON.parse(localStorage.getItem('bn-stars')||'{}'); } catch(e){}
+const saveStars = () => { try { localStorage.setItem('bn-stars', JSON.stringify(stars)); } catch(e){} };
+let me = ''; try { me = localStorage.getItem('bn-user')||''; } catch(e){}
+
+let filter='all', mode='learn', view='cards', qkind='fn', order=[], idx=0, flipped=false, editing=false;
+let score={ok:0,n:0}, qi=0, answered=false;
+
+// ---------- capability ----------
+let readOnly = false;
+
+function toast(t){ const d=document.createElement('div'); d.className='toast'; d.textContent=t; document.body.appendChild(d); setTimeout(()=>d.remove(),3000); }
+
+async function commit(entry, mutate){
+  if(!me){ askName(); return false; }
+  const next = JSON.parse(JSON.stringify(S));
+  mutate(next);
+  try{
+    const ops=[];
+    // cards: PUT changed cards
+    const before=Object.fromEntries(S.cards.map(c=>[c.photo,c]));
+    next.cards.forEach((c,i)=>{ const b=before[c.photo]; const cc=Object.assign({},c); delete cc._k; if(!b||JSON.stringify(Object.assign({},b,{_k:undefined,order:undefined}))!==JSON.stringify(Object.assign({},cc,{order:undefined}))){ cc.order=i; ops.push(dbWrite('PUT','cards/'+key(c.photo),cc)); } });
+    // tasks: PUT changed / DELETE removed
+    const tb=Object.fromEntries(S.tasks.map(t=>[t.id,t])); const tn=Object.fromEntries(next.tasks.map(t=>[t.id,t]));
+    for(const id of Object.keys(tn)){ const t=Object.assign({},tn[id]); delete t._k; if(JSON.stringify(tb[id]&&Object.assign({},tb[id],{_k:undefined}))!==JSON.stringify(t)) ops.push(dbWrite('PUT','tasks/'+key(id),t)); }
+    for(const id of Object.keys(tb)) if(!tn[id]) ops.push(dbWrite('DELETE','tasks/'+key(id)));
+    // facts: rewrite whole list (small)
+    if(JSON.stringify(S.facts)!==JSON.stringify(next.facts)){ const o={}; next.facts.forEach((f,i)=>{ o[f._k||('f'+Date.now().toString(36)+i)]={q:f.q,a:f.a,order:i}; }); ops.push(dbWrite('PUT','facts',o)); }
+    // passages
+    if(JSON.stringify(S.passages)!==JSON.stringify(next.passages)){ const o={}; next.passages.forEach((p,i)=>{ o[p.id]={id:p.id,title:p.title,text:p.text,order:i}; }); ops.push(dbWrite('PUT','passages',o)); }
+    // drill: PATCH my subtree only
+    if(JSON.stringify(S.drill[me]||{})!==JSON.stringify(next.drill[me]||{})) ops.push(dbWrite('PUT','drill/'+key(me),next.drill[me]||{}));
+    // recitals: POST new ones (those without _k)
+    for(const r of next.recitals) if(!r._k) ops.push(dbWrite('POST','recitals',r));
+    if(entry) ops.push(dbWrite('POST','log',entry));
+    ops.push(dbWrite('PUT','version',(S.version||0)+1));
+    await Promise.all(ops);
+    await refresh();
+    toast('Saved for everyone'); return true;
+  }catch(e){ toast('Save failed: '+(e.message||e)+'. Check your connection and try again.'); await refresh(); return false; }
+}
+
+// ---------- username ----------
+function renderWho(){
+  const w=document.getElementById('who');
+  w.innerHTML = me ? `Signed in as <b>${esc(me)}</b> · <button id="chname">change</button>` : `<button id="chname">Pick your name to start</button>`;
+  document.getElementById('chname').onclick=askName;
+}
+function askName(){
+  const names=S.cards.filter(c=>c.cls==='Beta Omega').map(c=>c.name);
+  const m=document.createElement('div'); m.className='modal';
+  m.innerHTML=`<div><h2>Which pledge are you?</h2><p>Your name goes on every edit, task check-off, and recital score.</p><select id="nm" style="width:100%;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:10px;padding:10px;font:15px 'Public Sans',sans-serif"><option value="">Pick your name</option>${names.map(n=>`<option value="${esc(n)}" ${n===me?'selected':''}>${esc(n)}</option>`).join('')}</select><div class="ctrl"><button class="btn primary" id="ok">Continue</button></div></div>`;
+  document.body.appendChild(m);
+  const sel=m.querySelector('#nm'); sel.focus();
+  const done=()=>{ const v=sel.value; if(!v){ sel.focus(); return; } me=v; try{localStorage.setItem('bn-user',me);}catch(e){} m.remove(); renderWho(); render(); };
+  m.querySelector('#ok').onclick=done; sel.addEventListener('change',()=>{ if(sel.value) done(); });
+}
+
+// ---------- helpers ----------
+function pool(){
+  if (filter==='starred') return S.cards.filter(c=>stars[c.photo]);
+  if (filter==='all') return S.cards.slice();
+  return S.cards.filter(c=>c.cls===filter);
+}
+function shuffle(a){ for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; }
+function resetOrder(){ order = pool(); idx = 0; flipped=false; editing=false; document.getElementById('editor').hidden=true; }
+const when = () => new Date().toISOString();
+const fmt = iso => { const d=new Date(iso); return d.toLocaleDateString(undefined,{month:'short',day:'numeric'})+' '+d.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}); };
+const PC = () => S.cards.filter(c=>c.cls==='Beta Omega').map(c=>c.name);
+
+// ---------- chips / tabs ----------
+const chipsEl = document.getElementById('chips');
+function renderChips(){
+  const cls=[...new Set(S.cards.map(c=>c.cls))];
+  const items=[['all',`All ${S.cards.length}`],...cls.map(k=>[k,k]),['starred','★ Starred']];
+  chipsEl.innerHTML = items.map(([k,l])=>`<button class="chip" data-f="${esc(k)}" aria-pressed="${filter===k}">${esc(l)}</button>`).join('');
+}
+chipsEl.addEventListener('click', e=>{ const b=e.target.closest('.chip'); if(!b) return; filter=b.dataset.f; renderChips(); resetOrder(); if(mode==='quiz'){ saveDrill(); startDrill(); } render(); });
+document.querySelector('.tabs').addEventListener('click', e=>{
+  const b=e.target.closest('[role=tab]'); if(!b) return;
+  document.querySelectorAll('[role=tab]').forEach(t=>t.setAttribute('aria-selected', t===b));
+  if(mode==='quiz') saveDrill(); resetOrder(); stopRec(); mode=b.dataset.mode; if(mode==='quiz') startDrill(); render(); refresh().then(()=>{ order=order.map(c=>S.cards.find(x=>x.photo===c.photo)||c); if(mode!=='learn'&&mode!=='quiz') render(); });
+});
+document.getElementById('v-cards').onclick=()=>{ view='cards'; render(); };
+document.getElementById('v-grid').onclick=()=>{ view='grid'; render(); };
+document.getElementById('v-dir').onclick=()=>{ view='dir'; render(); setTimeout(()=>document.getElementById('dirq').focus(),50); };
+document.getElementById('dirq').addEventListener('input',renderDir);
+document.getElementById('q-fn').onclick=()=>{ qkind='fn'; saveDrill(); startDrill(); render(); };
+document.getElementById('q-nf').onclick=()=>{ qkind='nf'; saveDrill(); startDrill(); render(); };
+document.getElementById('q-smart').onclick=()=>{ smart=!smart; document.getElementById('q-smart').setAttribute('aria-pressed',smart); saveDrill(); startDrill(); render(); };
+
+// ---------- learn ----------
+const cardEl=document.getElementById('card');
+function renderCard(){
+  const c=order[idx];
+  if(!c){ cardEl.innerHTML='<div style="padding:40px;text-align:center;color:var(--ink2)">Nothing here. Star some brothers first.</div>'; document.getElementById('editor').hidden=true; return; }
+  if(!flipped){
+    cardEl.innerHTML=`<div class="front"><img src="${IMG(c.photo)}" alt="brother photo"><div class="hint">Tap to reveal · ${idx+1} / ${order.length}</div></div>`;
+  } else {
+    const rows=FIELDS.map(([k,l])=>[l,c[k]]);
+    for(const [k,v] of Object.entries(c.extra||{})) rows.push([k,v]);
+    rows.push(['LinkedIn', c.li?`<a href="https://www.linkedin.com/in/${esc(c.li)}/" target="_blank" rel="noopener">linkedin.com/in/${esc(c.li)}</a>`:'', true]);
+    cardEl.innerHTML=`<div class="back"><img src="${IMG(c.photo)}" alt=""><div><h2>${esc(c.name)}</h2>${c.alias?`<div class="alias">${esc(c.alias)}</div>`:''}<span class="tag">${esc(c.cls)}</span></div><div class="facts">${rows.map(([k,v,raw])=>`<div><b>${esc(k)}</b><span>${v?(raw?v:esc(v)):'<span class="empty">not filled in yet</span>'}</span></div>`).join('')}</div></div>`;
+  }
+  const s=document.getElementById('star'); const on=!!stars[c.photo]; s.setAttribute('aria-pressed',on); s.textContent=on?'★ Starred':'☆ Star';
+  document.getElementById('editor').hidden=true;
+}
+let lastFlip=0;
+cardEl.addEventListener('pointerdown', e=>{ if(e.button&&e.button!==0) return; if(e.target.closest('a')) return; const t=Date.now(); if(t-lastFlip<250) return; lastFlip=t; flipped=!flipped; renderCard(); });
+cardEl.addEventListener('click', e=>{ if(e.target.closest('a')) return; e.preventDefault(); });
+cardEl.addEventListener('keydown', e=>{ if(e.key===' '||e.key==='Enter'){e.preventDefault();flipped=!flipped;renderCard();} });
+document.getElementById('next').onpointerdown=e=>{ if(e.button) return; if(!order.length) return; idx=(idx+1)%order.length; flipped=false; editing=false; renderCard(); };
+document.getElementById('prev').onpointerdown=e=>{ if(e.button) return; if(!order.length) return; idx=(idx-1+order.length)%order.length; flipped=false; editing=false; renderCard(); };
+document.getElementById('shuffle').onclick=()=>{ shuffle(order); idx=0; flipped=false; editing=false; renderCard(); };
+document.getElementById('star').onclick=()=>{ const c=order[idx]; if(!c) return; if(stars[c.photo]) delete stars[c.photo]; else stars[c.photo]=1; saveStars(); renderCard(); };
+document.getElementById('edit').onclick=()=>{ if(!order[idx]) return; if(!me){ askName(); return; } openInDir(order[idx].photo, true); };
+document.addEventListener('keydown', e=>{ if(mode!=='learn'||view!=='cards'||editing||['INPUT','TEXTAREA'].includes(e.target.tagName)) return; if(e.key==='ArrowRight') document.getElementById('next').onpointerdown({button:0}); if(e.key==='ArrowLeft') document.getElementById('prev').onpointerdown({button:0}); });
+
+// ---------- editor ----------
+function renderEditor(){ const ed=document.getElementById('editor'); ed.hidden=false; renderEditorInto(ed, order[idx], ()=>{ editing=false; const p=pool(); order=p; idx=Math.max(0,p.findIndex(x=>x.photo===order[idx]?.photo)); flipped=true; render(); }); }
+function renderEditorInto(ed, c, onDone){
+  if(!ed||!c) return; ed.hidden=false;
+  const extra=Object.entries(c.extra||{});
+  ed.innerHTML=`<div class="editor"><h2>Edit ${esc(c.name)}</h2>
+    <div class="field"><label>Name</label><input data-k="name" value="${esc(c.name)}"></div>
+    ${FIELDS.map(([k,l])=>`<div class="field"><label>${esc(l)}</label><textarea data-k="${k}">${esc(c[k]||'')}</textarea></div>`).join('')}
+    <div class="extras">${extra.map(([k,v])=>`<div class="field extra"><label>Custom field</label><div class="row"><input class="xk" placeholder="Field name" value="${esc(k)}"><input class="xv" placeholder="Value" value="${esc(v)}"></div></div>`).join('')}</div>
+    <div class="ctrl"><button class="small addf">+ Add a field</button></div>
+    <div class="ctrl"><button class="btn cancel">Cancel</button><button class="btn primary save">Save for everyone</button></div>
+    <div class="status">Saved edits are visible to the whole PC and logged under your name.</div></div>`;
+  ed.querySelector('.addf').onclick=()=>{ const d=document.createElement('div'); d.className='field extra'; d.innerHTML='<label>Custom field</label><div class="row"><input class="xk" placeholder="Field name (e.g. Favorite bar)"><input class="xv" placeholder="Value"></div>'; ed.querySelector('.extras').appendChild(d); d.querySelector('.xk').focus(); };
+  ed.querySelector('.cancel').onclick=()=>{ ed.hidden=true; onDone(false); };
+  ed.querySelector('.save').onclick=async()=>{
+    const btn=ed.querySelector('.save'); btn.disabled=true;
+    const changes=[]; const upd={};
+    const nm=ed.querySelector('[data-k=name]').value.trim(); if(nm && nm!==c.name){ changes.push({field:'Name',from:c.name,to:nm}); upd.name=nm; }
+    for(const [k,l] of FIELDS){ const v=ed.querySelector(`[data-k=${k}]`).value.trim(); if(v!==(c[k]||'')){ changes.push({field:l,from:c[k]||'',to:v}); upd[k]=v; } }
+    const nx={}; ed.querySelectorAll('.extra').forEach(d=>{ const k=d.querySelector('.xk').value.trim(), v=d.querySelector('.xv').value.trim(); if(k) nx[k]=v; });
+    const ox=c.extra||{};
+    for(const k of new Set([...Object.keys(ox),...Object.keys(nx)])){ if((ox[k]||'')!==(nx[k]||'')) changes.push({field:k,from:ox[k]||'',to:nx[k]||''}); }
+    if(!changes.length){ ed.hidden=true; onDone(false); return; }
+    const ok=await commit({who:me,at:when(),card:c.name,changes},(st)=>{ const t=st.cards.find(x=>x.photo===c.photo); Object.assign(t,upd); t.extra=nx; });
+    if(ok){ ed.hidden=true; onDone(true); } else btn.disabled=false;
+  };
+}
+
+// ---------- drill (self-graded flashcards) ----------
+const quizEl=document.getElementById('quizbody');
+let drun=[], di=0, dflip=false, dres={}, dirty=false, smart=true;
+function weight(c){ const x=(S.drill[me]||{})[c.photo]; if(!x) return 3; const r=x.r||(x.last==='ok'?5:x.last==='some'?3:1); const s=x.streak||0; if(r<=1) return 4.5; if(r===2) return 3.5; if(r===3) return 2.5; if(r===4) return 1.4; return s>=4?0.25:s>=2?0.6:1.2; }
+function startDrill(){
+  const p=pool(); di=0; dflip=false; dres={};
+  if(!smart||!me){ drun=shuffle(p); return; }
+  // weighted sample without replacement: weak/unknown first, but everyone can still show up
+  const items=p.map(c=>({c,w:weight(c)})); const out=[];
+  while(items.length){ let tot=items.reduce((a,b)=>a+b.w,0); let r=Math.random()*tot; let i=0; for(;i<items.length;i++){ r-=items[i].w; if(r<=0) break; } out.push(items.splice(Math.min(i,items.length-1),1)[0].c); }
+  drun=out;
+}
+function myDrill(){ return (S.drill[me]=S.drill[me]||{}); }
+async function saveDrill(){
+  if(!Object.keys(dres).length) return true;
+  const snap=dres; dres={};
+  const ok=await commit(null, st=>{ st.drill=st.drill||{}; const d=st.drill[me]=st.drill[me]||{}; for(const [p,r] of Object.entries(snap)){ const x=d[p]=d[p]||{ok:0,some:0,miss:0}; const rt=typeof r==='number'?r:(r==='ok'?5:r==='some'?3:1); x.r=rt; x.n=(x.n||0)+1; x.sum=(x.sum||0)+rt; if(rt>=4){x.ok++; x.streak=rt===5?(x.streak||0)+1:0;} else if(rt>=2){x.some=(x.some||0)+1; x.streak=0;} else {x.miss++; x.streak=0;} x.last=rt>=4?'ok':rt>=2?'some':'miss'; x.at=when(); } });
+  if(!ok) dres=Object.assign(snap,dres);
+  return ok;
+}
+function renderQuiz(){
+  document.getElementById('q-fn').setAttribute('aria-pressed',qkind==='fn'); document.getElementById('q-nf').setAttribute('aria-pressed',qkind==='nf');
+  if(!drun.length) startDrill();
+  { const p=pool(); const d=S.drill[me]||{}; const solid=p.filter(c=>{const x=d[c.photo]; return x&&x.last==='ok'&&(x.streak||0)>=2;}).length, shaky=p.filter(c=>{const x=d[c.photo]; return x&&(x.last!=='ok'||(x.streak||0)<2);}).length, never=p.length-solid-shaky;
+    document.getElementById('recall').innerHTML=me?`Recall: <b>${solid}</b> solid (2+ in a row) · <b>${shaky}</b> shaky · <b>${never}</b> never drilled${smart?' · smart order puts shaky and new ones first':''}`:'Pick your name to track recall.'; }
+  if(!drun.length){ quizEl.innerHTML='<div class="reveal">Nothing in this set.</div>'; return; }
+  if(di>=drun.length){
+    const vals=Object.values(dres); const got=vals.filter(r=>r===5).length, some=vals.filter(r=>r>=2&&r<5).length, tot=vals.length; const avg=tot?(vals.reduce((a,b)=>a+b,0)/tot).toFixed(1):'0';
+    quizEl.innerHTML=`<div class="reveal"><div class="big">${avg}<small> avg / 5 · ${got} perfect · ${some} partial</small></div>Anything under 5 got starred. ${me?'Saving this run to your record…':'Pick your name to save this run.'}</div><div class="ctrl"><button class="btn primary" id="again">Run it again</button></div>`;
+    document.getElementById('again').onclick=()=>{ startDrill(); renderQuiz(); };
+    saveDrill().then(ok=>{ const r=quizEl.querySelector('.reveal'); if(r) r.innerHTML=`<div class="big">${avg}<small> avg / 5 · ${got} perfect · ${some} partial</small></div>${ok?'Saved to your record.':'Not saved (see message).'}`; });
+    return;
+  }
+  const c=drun[di]; const rec=(S.drill[me]||{})[c.photo];
+  const hist = rec ? `<span>last ${rec.r||'?'}/5 · avg ${rec.n?(rec.sum/rec.n).toFixed(1):'?'} over ${rec.n||rec.ok+rec.miss+(rec.some||0)}${rec.streak>1?' · streak '+rec.streak:''}</span>` : '<span>never drilled</span>';
+  const front = qkind==='fn' ? `<img src="${IMG(c.photo)}" alt="who is this"><div class="prompt">Say their name, then flip · ${di+1} / ${drun.length}</div>` : `<div class="prompt">Picture their face, then flip · ${di+1} / ${drun.length}</div><h2>${esc(c.name)}</h2>`;
+  const rows=FIELDS.filter(([k])=>k!=='cls').map(([k,l])=>[l,c[k]]).concat(Object.entries(c.extra||{})).filter(([k,v])=>v);
+  const back = `<div class="back" style="text-align:left;padding:0"><img src="${IMG(c.photo)}" alt=""><div><h2>${esc(c.name)}</h2><span class="tag">${esc(c.cls)}</span></div><div class="facts">${rows.map(([k,v])=>`<div><b>${esc(k)}</b><span>${esc(v)}</span></div>`).join('')||'<div class="empty">No facts filled in yet.</div>'}</div></div>`;
+  quizEl.innerHTML=`<div class="card" id="dcard" style="padding:14px;text-align:center">${dflip?back:front}</div>
+    ${dflip?`<div class="legend" style="text-align:center;margin-top:10px">How much did you know? 1 = nothing · 5 = everything</div><div class="opts" style="grid-template-columns:repeat(5,1fr);gap:6px">${[1,2,3,4,5].map(r=>`<button class="opt rate" data-r="${r}" style="padding:16px 4px;font-size:22px;border-color:${['#B23A3A','#C96A3A','#C79A2B','#7FA84A','#1F7A4D'][r-1]};box-shadow:inset 0 0 0 2px ${['#B23A3A','#C96A3A','#C79A2B','#7FA84A','#1F7A4D'][r-1]}">${r}</button>`).join('')}</div><div class="legend" style="display:flex;justify-content:space-between"><span>name wrong</span><span>name only</span><span>some facts</span><span>most</span><span>all</span></div>`:`<div class="ctrl"><button class="btn primary" id="dflip">Flip</button></div>`}
+    <div class="score">${hist}<span>${Object.keys(dres).length} rated this run</span></div>`;
+  const flip=()=>{ dflip=true; renderQuiz(); };
+  if(!dflip){ quizEl.querySelector('#dcard').onpointerdown=e=>{ if(!e.button) flip(); }; quizEl.querySelector('#dflip').onpointerdown=e=>{ if(!e.button) flip(); }; }
+  else {
+    quizEl.querySelectorAll('.rate').forEach(b=>b.onpointerdown=e=>{ if(e.button) return; const r=+b.dataset.r; dres[c.photo]=r; if(r<5){ stars[c.photo]=1; saveStars(); } di++; dflip=false; renderQuiz(); });
+  }
+}
+document.addEventListener('keydown', e=>{ if(mode!=='quiz'||['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return; const fire=id=>{ const b=quizEl.querySelector(id); if(b&&b.onpointerdown) b.onpointerdown({button:0}); }; if(e.key===' '){ e.preventDefault(); fire('#dflip'); } if('12345'.includes(e.key)&&e.key){ const b=quizEl.querySelector('.rate[data-r="'+e.key+'"]'); if(b) b.onpointerdown({button:0}); } });
+
+// ---------- directory ----------
+function renderDir(){
+  const q=document.getElementById('dirq').value.trim().toLowerCase(); const out=document.getElementById('dirres');
+  const hay=c=>[c.name,c.alias,c.cls,...FIELDS.map(([k])=>c[k]||''),...Object.values(c.extra||{})].filter(Boolean).join(' · ').toLowerCase();
+  const list=S.cards.filter(c=>!q||hay(c).includes(q)).sort((a,b)=>a.name.localeCompare(b.name));
+  out.innerHTML=(dirOpen?renderDirDetail():'')+`<div class="count">${list.length} match${list.length===1?'':'es'}</div>`+list.map(c=>{ const h=hay(c); let snip=''; if(q){ const i=h.indexOf(q); if(i>=0) snip=h.slice(Math.max(0,i-40),i+60).replace(/^\S*\s/,'').replace(/\s\S*$/,''); }
+    return `<button class="tile" data-p="${c.photo}" style="display:flex;width:100%;align-items:center;gap:12px;margin-top:8px;padding:8px"><img src="${IMG(c.photo)}" alt="" style="width:56px;height:56px;border-radius:10px;flex:none"><div style="padding:0"><div>${esc(c.name)}</div><small>${esc(c.cls)}${c.home?' · '+esc(c.home):''}</small>${snip?`<small style="color:var(--ink2)">…${esc(snip)}…</small>`:''}</div></button>`; }).join('');
+  out.querySelectorAll('.tile').forEach(t=>t.onclick=()=>{ openInDir(t.dataset.p); });
+  const dc=out.querySelector('#dirclose'); if(dc) dc.onclick=()=>{ dirOpen=null; dirEdit=false; renderDir(); };
+  const de=out.querySelector('#diredit'); if(de) de.onclick=()=>{ if(!me){askName();return;} dirEdit=!dirEdit; renderDir(); };
+  if(dirOpen&&dirEdit) renderEditorInto(out.querySelector('#direditor'), S.cards.find(x=>x.photo===dirOpen), ()=>{ dirEdit=false; renderDir(); });
+}
+
+let dirOpen=null, dirEdit=false;
+function openInDir(photo, edit){
+  dirOpen=photo; dirEdit=!!edit; view='dir'; mode='learn'; document.querySelectorAll('[role=tab]').forEach(x=>x.setAttribute('aria-selected',x.dataset.mode==='learn'));
+  render(); const c=S.cards.find(x=>x.photo===photo); document.getElementById('dirq').value=c?c.name:''; renderDir();
+  const el=document.getElementById('dirdetail'); if(el) el.scrollIntoView({block:'start',behavior:'smooth'});
+}
+function renderDirDetail(){
+  const c=S.cards.find(x=>x.photo===dirOpen); if(!c) return '';
+  const rows=FIELDS.map(([k,l])=>[l,c[k]]).concat(Object.entries(c.extra||{}));
+  rows.push(['LinkedIn', c.li?`<a href="https://www.linkedin.com/in/${esc(c.li)}/" target="_blank" rel="noopener">linkedin.com/in/${esc(c.li)}</a>`:'', true]);
+  return `<div id="dirdetail" class="card" style="margin-top:12px;cursor:default"><div class="back"><img src="${IMG(c.photo)}" alt=""><div><h2>${esc(c.name)}</h2>${c.alias?`<div class="alias">${esc(c.alias)}</div>`:''}<span class="tag">${esc(c.cls)}</span></div><div class="facts">${rows.map(([k,v,raw])=>`<div><b>${esc(k)}</b><span>${v?(raw?v:esc(v)):'<span class="empty">not filled in yet</span>'}</span></div>`).join('')}</div></div></div>
+    <div class="ctrl"><button class="btn" id="dirclose">Close</button><button class="btn primary" id="diredit">${dirEdit?'Close editor':'✎ Edit this brother'}</button></div><div id="direditor" ${dirEdit?'':'hidden'}></div>`;
+}
+
+// ---------- grid ----------
+const gridEl=document.getElementById('grid');
+function renderGrid(){
+  gridEl.innerHTML=pool().map(c=>`<button class="tile" data-p="${c.photo}" data-star="${stars[c.photo]?1:0}"><img src="${IMG(c.photo)}" alt=""><div>${esc(c.name)}<small>${esc(c.cls)}</small></div></button>`).join('');
+}
+gridEl.addEventListener('click', e=>{ const t=e.target.closest('.tile'); if(!t) return; view='cards'; resetOrder(); idx=order.findIndex(c=>c.photo===t.dataset.p); flipped=true; render(); window.scrollTo({top:0}); });
+
+// ---------- recite ----------
+const recEl=document.getElementById('recite');
+let pIdx=0, recog=null, recording=false, heardFinal='', heardInterim='', recMode='mic', hidePassage=false;
+const PUNCT = [
+  [/\b(semi[\s-]?colon)\b/gi,' ; '],[/\b(full[\s-]?stop|period)\b/gi,' . '],[/\bcomma\b/gi,' , '],[/\bcolon\b/gi,' : '],
+  [/\b(open|opening|begin) quote\b/gi,' " '],[/\b(close|closing|end) quote\b/gi,' " '],[/\bquote\b/gi,' " '],[/\bquotation( mark)?\b/gi,' " '],
+  [/\bhyphen\b/gi,' - '],[/\bdash\b/gi,' - ']
+];
+function tokens(text){
+  // returns [{w, p:bool}] words and punctuation tokens
+  return (text.match(/[A-Za-z0-9']+|[;:,."\-]/g)||[]).map(w=>({w, p:/^[;:,."\-]$/.test(w), n:/^[;:,."\-]$/.test(w)?w:w.toLowerCase().replace(/[^a-z0-9]/g,'')}));
+}
+function spokenToTokens(text){
+  let t=' '+text+' '; for(const [re,rep] of PUNCT) t=t.replace(re,rep);
+  return tokens(t);
+}
+function lev(a,b){ const m=a.length,n=b.length; if(!m) return n; if(!n) return m; let prev=[...Array(n+1).keys()]; for(let i=1;i<=m;i++){ const cur=[i]; for(let j=1;j<=n;j++){ cur[j]=Math.min(prev[j]+1,cur[j-1]+1,prev[j-1]+(a[i-1]===b[j-1]?0:1)); } prev=cur; } return prev[n]; }
+function sim(a,b){ if(a.p&&b.p) return a.w===b.w?1:0; if(a.p||b.p) return 0; const A=a.n,B=b.n; if(A===B) return 1; if(A.length<3||B.length<3) return A===B?1:0; const d=lev(A,B); return 1-d/Math.max(A.length,B.length); }
+function grade(ref, said){
+  // LCS-style alignment with fuzzy match; returns per-ref-token status and stats
+  const R=ref, H=said, m=R.length, n=H.length;
+  const dp=Array.from({length:m+1},()=>new Float64Array(n+1));
+  for(let i=m-1;i>=0;i--) for(let j=n-1;j>=0;j--){ const s=sim(R[i],H[j]); const take = s>=0.72 ? s+dp[i+1][j+1] : 0; dp[i][j]=Math.max(dp[i+1][j],dp[i][j+1],take); }
+  const status=new Array(m).fill('miss'); let i=0,j=0, extras=0;
+  while(i<m&&j<n){ const s=sim(R[i],H[j]); if(s>=0.72 && s+dp[i+1][j+1]>=dp[i][j]-1e-6){ status[i]= s>=0.99?'ok':'near'; i++; j++; } else if(dp[i+1][j]>=dp[i][j+1]){ i++; } else { j++; extras++; } }
+  extras += n-j;
+  const words=R.filter(t=>!t.p).length, puncts=R.filter(t=>t.p).length;
+  let wOk=0,pOk=0; R.forEach((t,k)=>{ if(status[k]!=='miss'){ if(t.p) pOk++; else wOk++; } });
+  const pct = Math.round(100*(wOk+pOk*0.5)/(words+puncts*0.5) - Math.min(15, extras*0.5));
+  return {status, words, puncts, wOk, pOk, extras, pct:Math.max(0,pct)};
+}
+function stopRec(){ if(recog){ try{ recog.stop(); }catch(e){} } recording=false; }
+function renderRecite(){
+  const P=S.passages; const p=P[pIdx]; const ref=tokens(p.text);
+  const SR = window.SpeechRecognition||window.webkitSpeechRecognition;
+  const mine = S.recitals.filter(r=>r.who===me&&r.passage===p.id).map(r=>r.pct); const best = mine.length?Math.max(...mine):null;
+  recEl.innerHTML=`
+    <div class="sub">${P.map((x,i)=>`<button data-pi="${i}" aria-pressed="${i===pIdx}">${esc(x.title)}</button>`).join('')}</div>
+    <div class="passage ${hidePassage?'hide':''}" id="ptext"><p>${ref.map((t,k)=>`<span class="tk" data-k="${k}">${esc(t.w)}</span>`).join(' ').replace(/ ([;:,.])/g,'$1')}</p></div>
+    <div class="ctrl"><button class="btn" id="hideP">${hidePassage?'Show text':'Hide text'}</button><button class="btn" id="mMic" aria-pressed="${recMode==='mic'}">🎙 Speak</button><button class="btn" id="mType" aria-pressed="${recMode==='type'}">⌨ Type</button></div>
+    <div class="legend">Say punctuation out loud: <b>quote</b> at the start and end, <b>semicolon</b>, <b>comma</b>, <b>full stop</b> (or "period"). Word for word. Pronunciation is graded leniently, punctuation is not.</div>
+    ${recMode==='mic' ? `<div class="ctrl"><button class="btn primary" id="recbtn">${recording?'■ Stop':'● Start recording'}</button><button class="btn" id="clear">Clear</button></div>
+      <div class="heard" id="heard">${SR?'':'Speech recognition is not available in this browser. Use Chrome or Safari, or switch to Type.'}</div>`
+    : `<div class="field" style="margin-top:12px"><label>Type it from memory (punctuation included)</label><textarea id="typed" style="min-height:140px"></textarea></div>`}
+    <div class="ctrl"><button class="btn ok" id="gradebtn">Check it</button></div>
+    <div id="result"></div>
+    <div class="editor" style="margin-top:14px"><h2>Scoreboard · ${esc(p.title)}</h2>${best!==null?`<div class="status">Your best: <b>${best}%</b> over ${mine.length} logged attempt${mine.length===1?'':'s'}</div>`:'<div class="status">No attempts yet. Every Check is logged.</div>'}
+      <table class="lb"><tr><th>Pledge</th><th class="n">Best</th><th class="n">Attempts</th><th>Last</th></tr>${PC().map(n=>{ const rs=S.recitals.filter(r=>r.who===n&&r.passage===p.id); const b=rs.length?Math.max(...rs.map(r=>r.pct)):null; return `<tr><td>${esc(n)}</td><td class="n">${b===null?'—':b+'%'}</td><td class="n">${rs.length}</td><td>${rs.length?fmt(rs[0].at):'—'}</td></tr>`; }).join('')}</table>
+      <div class="status">Names here come from the Beta Omega cards, so sign in with the exact name on your card to show up.</div></div>`;
+  recEl.querySelectorAll('[data-pi]').forEach(b=>b.onclick=()=>{ stopRec(); pIdx=+b.dataset.pi; heardFinal=heardInterim=''; renderRecite(); });
+  recEl.querySelector('#hideP').onclick=()=>{ hidePassage=!hidePassage; renderRecite(); };
+  recEl.querySelector('#mMic').onclick=()=>{ recMode='mic'; renderRecite(); };
+  recEl.querySelector('#mType').onclick=()=>{ stopRec(); recMode='type'; renderRecite(); };
+  if(recMode==='mic'){
+    const heard=recEl.querySelector('#heard');
+    const paint=()=>{ heard.innerHTML=esc(heardFinal)+(heardInterim?`<span class="interim"> ${esc(heardInterim)}</span>`:''); };
+    if(heardFinal||heardInterim) paint();
+    recEl.querySelector('#clear').onclick=()=>{ heardFinal=heardInterim=''; paint(); recEl.querySelector('#result').innerHTML=''; };
+    recEl.querySelector('#recbtn').onclick=()=>{
+      if(recording){ stopRec(); renderRecite(); return; }
+      if(!SR){ toast('No speech recognition here. Switch to Type.'); return; }
+      recog=new SR(); recog.lang='en-US'; recog.continuous=true; recog.interimResults=true;
+      recog.onresult=e=>{ let fin='',inter=''; for(let i=e.resultIndex;i<e.results.length;i++){ const r=e.results[i]; if(r.isFinal) fin+=r[0].transcript+' '; else inter+=r[0].transcript+' '; } if(fin) heardFinal+=fin; heardInterim=inter; paint(); };
+      recog.onerror=e=>{ recording=false; const msg = e.error==='not-allowed'||e.error==='service-not-allowed' ? 'Mic blocked. Allow the microphone for this page, or open the link in a new tab, or use Type.' : 'Mic error: '+e.error; toast(msg); renderRecite(); };
+      recog.onend=()=>{ if(recording){ try{ recog.start(); }catch(e){ recording=false; renderRecite(); } } };
+      try{ recog.start(); recording=true; renderRecite(); }catch(e){ toast('Could not start the mic: '+e.message); }
+    };
+  }
+  recEl.querySelector('#gradebtn').onclick=async()=>{
+    stopRec();
+    const saidText = recMode==='mic' ? (heardFinal+' '+heardInterim) : recEl.querySelector('#typed').value;
+    const said = recMode==='mic' ? spokenToTokens(saidText) : tokens(saidText);
+    if(!said.length){ toast('Nothing to grade yet.'); return; }
+    const g=grade(ref, said);
+    hidePassage=false; recEl.querySelector('#ptext').classList.remove('hide');
+    recEl.querySelectorAll('.tk').forEach(el=>{ el.classList.remove('ok','miss','near'); el.classList.add(g.status[+el.dataset.k]); });
+    const missed = ref.filter((t,k)=>g.status[k]==='miss');
+    recEl.querySelector('#result').innerHTML=`<div class="reveal"><div class="big">${g.pct}%<small> · ${g.wOk}/${g.words} words · ${g.pOk}/${g.puncts} punctuation · ${g.extras} extra</small></div>
+      <div class="legend"><span class="tk ok">green</span> exact <span class="tk near">yellow</span> close enough <span class="tk miss">red</span> missed</div>
+      ${missed.length?`<div style="margin-top:8px;font-size:13px">Missed: ${missed.slice(0,40).map(t=>esc(t.w)).join(' · ')}${missed.length>40?' …':''}</div>`:'<div style="margin-top:8px;font-weight:600;color:var(--good)">Word perfect.</div>'}
+      <div class="status" id="logst">Logging this attempt to your record…</div></div>`;
+    const ok=await commit(null, st=>{ st.recitals.unshift({who:me,at:when(),passage:p.id,pct:g.pct}); if(st.recitals.length>400) st.recitals.length=400; });
+    const ls=recEl.querySelector('#logst'); if(ls) ls.textContent = ok ? 'Logged to your record ('+g.pct+'%). Every check counts, so no free tries.' : 'Not logged (see message).';
+  };
+}
+
+// ---------- tasks ----------
+const tasksEl=document.getElementById('tasks');
+function renderTasks(){
+  const pc=PC(); const today=new Date().toISOString().slice(0,10);
+  const list=S.tasks.slice().sort((a,b)=>(a.due||'9999')<(b.due||'9999')?-1:1);
+  tasksEl.innerHTML=`<div class="editor" style="margin-top:12px"><h2>Add a task</h2>
+      <div class="field"><label>Task</label><input id="tt" placeholder="e.g. Get 5 brother signatures"></div>
+      <div class="field"><label>Due</label><input id="td" type="date"></div>
+      <div class="field"><label>Notes</label><textarea id="tn" placeholder="details, where, who to ask"></textarea></div>
+      <div class="ctrl"><button class="btn primary" id="tadd">Add for the whole PC</button></div></div>
+    ${list.length?list.map(t=>{ const done=Object.keys(t.done||{}); const n=done.length, total=pc.length||13; const meDone=!!(t.done||{})[me]; const late=t.due&&t.due<today&&n<total;
+      return `<div class="task ${n>=total?'done':''}"><div class="t"><h3>${esc(t.title)}</h3><span class="due ${late?'late':''}">${t.due?'due '+t.due:''}</span></div>${t.notes?`<div class="notes">${esc(t.notes)}</div>`:''}
+      <div class="bar"><i style="width:${Math.round(100*n/total)}%"></i></div>
+      <div class="meta"><span>${n} / ${total} done · added by ${esc(t.by)}</span><span><button class="small" data-tog="${t.id}">${meDone?'Undo mine':'✓ Mark me done'}</button> <button class="small" data-show="${t.id}">Who</button> <button class="small" data-del="${t.id}">Delete</button></span></div>
+      <div class="who" data-who="${t.id}" hidden>${pc.map(n=>`<span class="${(t.done||{})[n]?'':'no'}">${esc(n.split(' ')[0])}</span>`).join('')}${done.filter(d=>!pc.includes(d)).map(d=>`<span>${esc(d)}</span>`).join('')}</div></div>`; }).join(''):'<div class="reveal" style="margin-top:12px">No tasks yet. Add the first one.</div>'}`;
+  tasksEl.querySelector('#tadd').onclick=async()=>{ const title=tasksEl.querySelector('#tt').value.trim(), due=tasksEl.querySelector('#td').value, notes=tasksEl.querySelector('#tn').value.trim(); if(!title) return; const ok=await commit({who:me,at:when(),card:'Tasks',changes:[{field:'Added task',from:'',to:title+(due?' (due '+due+')':'')}]},st=>st.tasks.push({id:uid(),title,due,notes,by:me,at:when(),done:{}})); if(ok) renderTasks(); };
+  tasksEl.querySelectorAll('[data-tog]').forEach(b=>b.onclick=async()=>{ if(!me){askName();return;} const t=S.tasks.find(x=>x.id===b.dataset.tog); const was=!!(t.done||{})[me]; const ok=await commit({who:me,at:when(),card:'Tasks',changes:[{field:t.title,from:was?'done':'not done',to:was?'not done':'done'}]},st=>{ const x=st.tasks.find(y=>y.id===t.id); x.done=x.done||{}; if(was) delete x.done[me]; else x.done[me]=when(); }); if(ok) renderTasks(); });
+  tasksEl.querySelectorAll('[data-show]').forEach(b=>b.onclick=()=>{ const w=tasksEl.querySelector(`[data-who="${b.dataset.show}"]`); w.hidden=!w.hidden; });
+  tasksEl.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{ const t=S.tasks.find(x=>x.id===b.dataset.del); if(!confirm('Delete "'+t.title+'" for everyone?')) return; const ok=await commit({who:me,at:when(),card:'Tasks',changes:[{field:'Deleted task',from:t.title,to:''}]},st=>{ st.tasks=st.tasks.filter(x=>x.id!==t.id); }); if(ok) renderTasks(); });
+}
+
+// ---------- accountability ----------
+const acctEl=document.getElementById('acct');
+function renderAcct(){
+  const pc=PC(); const total=S.cards.length; const P=S.passages;
+  const rows=pc.map(n=>{
+    const d=S.drill[n]||{}; const rated=Object.values(d).filter(x=>x.n); const avgr=rated.length?(rated.reduce((a,x)=>a+x.sum/x.n,0)/rated.length).toFixed(1):'—'; const solid=Object.values(d).filter(x=>x.last==='ok'&&(x.streak||0)>=2).length; const known=Object.values(d).filter(x=>x.last==='ok').length; const part=Object.values(d).filter(x=>x.last==='some').length; const drilled=Object.keys(d).length;
+    const bests=P.map(p=>{ const rs=S.recitals.filter(r=>r.who===n&&r.passage===p.id); return rs.length?Math.max(...rs.map(r=>r.pct)):null; });
+    const tries=S.recitals.filter(r=>r.who===n).length;
+    const tasksDone=S.tasks.filter(t=>(t.done||{})[n]).length;
+    const edits=S.log.filter(e=>e.who===n).length;
+    return {n,avgr,solid,known,part,drilled,bests,tries,tasksDone,edits};
+  }).sort((a,b)=>(b.solid*2+b.known+(b.bests[0]||0))-(a.solid*2+a.known+(a.bests[0]||0)));
+  acctEl.innerHTML=`<div class="editor" style="margin-top:12px"><h2>Where everyone stands</h2>
+    <div class="status">Avg = mean of your 1-5 ratings across brothers you've drilled. Solid = rated 5 twice in a row. Known = last rating 4 or 5. Partial = 2 or 3. Recite = best score. Nothing here is private.</div>
+    <div style="overflow-x:auto"><table class="lb"><tr><th>Pledge</th><th class="n">Avg /5</th><th class="n">Solid</th><th class="n">Known</th><th class="n">Partial</th><th class="n">Drilled</th>${P.map(p=>`<th class="n">${esc(p.title)}</th>`).join('')}<th class="n">Tries</th><th class="n">Tasks</th><th class="n">Edits</th></tr>
+    ${rows.map(r=>`<tr><td>${esc(r.n)}${r.n===me?' <b>(you)</b>':''}</td><td class="n"><b>${r.avgr}</b></td><td class="n">${r.solid}/${total}</td><td class="n">${r.known}</td><td class="n">${r.part}</td><td class="n">${r.drilled}</td>${r.bests.map(b=>`<td class="n">${b===null?'—':b+'%'}</td>`).join('')}<td class="n">${r.tries}</td><td class="n">${r.tasksDone}/${S.tasks.length}</td><td class="n">${r.edits}</td></tr>`).join('')}</table></div></div>
+    ${me&&S.drill[me]?`<div class="editor" style="margin-top:12px"><h2>Your weak spots</h2><div class="grid" style="margin-top:6px">${S.cards.filter(c=>{const x=S.drill[me][c.photo]; return x&&x.last!=='ok';}).map(c=>{const x=S.drill[me][c.photo]; return `<div class="tile"><img src="${IMG(c.photo)}" alt=""><div>${esc(c.name)}<small>${x.last==='miss'?'name wrong':'facts shaky'} · ${x.miss} wrong · ${x.some||0} partial</small></div></div>`;}).join('')||'<div class="status">No misses on record. Either you are cracked or you have not drilled.</div>'}</div></div>`:''}`;
+}
+
+// ---------- pledge guide ----------
+const guideEl=document.getElementById('guide');
+let gq='';
+function renderGuide(){
+  const pages=S.guide||[]; const q=gq.trim().toLowerCase();
+  const hl=t=>{ let s=esc(t); if(q){ const re=new RegExp('('+q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','ig'); s=s.replace(re,'<mark>$1</mark>'); } return s; };
+  const list=pages.filter(p=>!q||(p.title+' '+p.body).toLowerCase().includes(q));
+  guideEl.innerHTML=`<div class="field" style="margin-top:12px"><label>Search the pledge guide</label><input id="gq" placeholder="e.g. hazing, big brother, 1907" value="${esc(gq)}" autocomplete="off"></div>
+    <div class="count">${pages.length} pages · ${list.length} shown</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${pages.map((p,i)=>`<a href="#g${i}" class="chip" style="text-decoration:none">${i+1}. ${esc(p.title)}</a>`).join('')}</div>
+    ${list.map(p=>`<div class="passage" id="g${p.order}" style="user-select:text"><h3 style="margin:0 0 8px;font-size:18px">${hl(p.title)}</h3>${p.body.split(/\n\n+/).map(par=>`<p style="margin:0 0 10px;white-space:pre-line">${hl(par)}</p>`).join('')}</div>`).join('')||'<div class="reveal" style="margin-top:12px">No matches.</div>'}`;
+  const inp=guideEl.querySelector('#gq'); inp.addEventListener('input',()=>{ const pos=inp.selectionStart; gq=inp.value; renderGuide(); const n=guideEl.querySelector('#gq'); n.focus(); n.setSelectionRange(pos,pos); });
+}
+
+// ---------- DSP facts ----------
+const factsEl=document.getElementById('facts');
+function renderFacts(){
+  factsEl.innerHTML=`<div class="factlist">${S.facts.length?S.facts.map((f,i)=>`<div class="fact"><b>${esc(f.q)}</b><div class="a hide" title="tap to reveal">${esc(f.a)}</div><div class="ctrl" style="margin-top:6px"><button class="small" data-e="${i}">Edit</button><button class="small" data-d="${i}">Delete</button></div></div>`).join(''):'<div class="reveal">No DSP facts yet. Add the ones the brothers give you. (The purpose statement and the ideal member / chapter are under Recite.)</div>'}</div>
+  <div class="editor" id="fed"><h2>Add a fact</h2><div class="field"><label>Question / prompt</label><input id="fq" placeholder="e.g. DSP founding date"></div><div class="field"><label>Answer</label><textarea id="fa" placeholder="e.g. November 7, 1907, NYU"></textarea></div><div class="ctrl"><button class="btn primary" id="fadd">Save for everyone</button></div></div>`;
+  factsEl.querySelectorAll('.a').forEach(a=>a.onclick=()=>a.classList.toggle('hide'));
+  factsEl.querySelector('#fadd').onclick=async()=>{ const q=factsEl.querySelector('#fq').value.trim(), a=factsEl.querySelector('#fa').value.trim(); if(!q||!a) return; const ok=await commit({who:me,at:when(),card:'DSP facts',changes:[{field:q,from:'',to:a}]},st=>st.facts.push({q,a})); if(ok) renderFacts(); };
+  factsEl.querySelectorAll('[data-d]').forEach(b=>b.onclick=async()=>{ const i=+b.dataset.d, f=S.facts[i]; if(!confirm('Delete "'+f.q+'"?')) return; const ok=await commit({who:me,at:when(),card:'DSP facts',changes:[{field:f.q,from:f.a,to:'(deleted)'}]},st=>st.facts.splice(i,1)); if(ok) renderFacts(); });
+  factsEl.querySelectorAll('[data-e]').forEach(b=>b.onclick=()=>{ const i=+b.dataset.e, f=S.facts[i]; const q=prompt('Question',f.q); if(q===null) return; const a=prompt('Answer',f.a); if(a===null) return; if(q===f.q&&a===f.a) return; commit({who:me,at:when(),card:'DSP facts',changes:[{field:q,from:f.a,to:a}]},st=>{st.facts[i]={q,a};}).then(ok=>{ if(ok) renderFacts(); }); });
+}
+
+// ---------- log ----------
+const logEl=document.getElementById('log');
+function renderLog(){
+  logEl.innerHTML=`<div class="log">${S.log.length?S.log.map(e=>`<div class="entry"><div class="top"><span><b>${esc(e.who)}</b> · <b>${esc(e.card)}</b></span><span>${fmt(e.at)}</span></div>${e.changes.map(ch=>`<div class="diff"><span style="font-weight:600">${esc(ch.field)}</span>${ch.from?`<span class="from">${esc(ch.from)}</span>`:''}<span class="to">${esc(ch.to)||'(cleared)'}</span></div>`).join('')}</div>`).join(''):'<div class="reveal">No edits yet.</div>'}</div>`;
+}
+
+// ---------- error safety net ----------
+function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-09-18c'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
+  b.innerHTML='<span style="flex:1;word-break:break-word">Something broke: '+esc(msg)+'</span><button onclick="location.reload()" style="border:0;background:#fff;color:#B23A3A;border-radius:8px;padding:6px 10px;font:600 13px \'Public Sans\',sans-serif;cursor:pointer">Reload</button><button onclick="document.getElementById(\'errbar\').remove()" style="border:0;background:transparent;color:#fff;font-size:18px;cursor:pointer">×</button>'; }
+window.addEventListener('error', e=>{ showErr((e.message||'error')+' @'+(e.lineno||'?')); try{ render(); }catch(x){} });
+window.addEventListener('unhandledrejection', e=>{ showErr('async: '+((e.reason&&e.reason.message)||e.reason||'error')); });
+
+// ---------- render ----------
+function render(){
+  document.getElementById('count').textContent=`${pool().length} in this set · ${Object.keys(stars).length} starred · data v${S.version}`;
+  const showChips = mode==='learn'||mode==='quiz';
+  chipsEl.hidden=!showChips; document.getElementById('count').hidden=!showChips;
+  for(const id of ['learn','quiz','recite','tasks','guide','facts','acct','log']) document.getElementById(id).hidden = mode!==id;
+  if(mode==='learn'){ document.getElementById('v-cards').setAttribute('aria-pressed',view==='cards'); document.getElementById('v-grid').setAttribute('aria-pressed',view==='grid'); document.getElementById('v-dir').setAttribute('aria-pressed',view==='dir'); document.getElementById('cardwrap').hidden=view!=='cards'; gridEl.hidden=view!=='grid'; document.getElementById('dir').hidden=view!=='dir'; if(view==='cards') renderCard(); else if(view==='grid') renderGrid(); else renderDir(); }
+  else if(mode==='quiz') renderQuiz();
+  else if(mode==='acct') renderAcct();
+  else if(mode==='recite') renderRecite();
+  else if(mode==='tasks') renderTasks();
+  else if(mode==='facts') renderFacts();
+  else if(mode==='guide') renderGuide();
+  else if(mode==='log') renderLog();
+}
+renderWho(); setStatus('Loading…');
+Promise.all([loadPhotos(),refresh()]).then(()=>{ renderChips(); resetOrder(); render(); if(!me) setTimeout(askName, 300); });
+setInterval(()=>{ if(document.visibilityState==='visible' && !editing && !recording && !dirEdit && mode!=='learn' && mode!=='quiz') refresh().then(()=>{ order=order.map(c=>S.cards.find(x=>x.photo===c.photo)||c); drun=drun.map(c=>S.cards.find(x=>x.photo===c.photo)||c); if(mode==='tasks'||mode==='acct'||mode==='log'||mode==='facts'||mode==='guide') render(); }); }, 30000);
