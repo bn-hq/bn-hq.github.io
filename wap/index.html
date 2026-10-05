@@ -76,6 +76,23 @@ button:focus-visible,textarea:focus-visible,[tabindex]:focus-visible{outline:2px
 .mv{display:inline-block;font-family:var(--mono);font-weight:700;font-size:12px;padding:3px 8px;border-radius:6px;
   background:color-mix(in oklab,var(--m) 20%,transparent);color:var(--ink);box-shadow:inset 0 0 0 1px color-mix(in oklab,var(--m) 45%,transparent);line-height:1.35}
 .mv.gone{background:none;box-shadow:none;color:var(--muted);font-weight:500;opacity:.6}
+button.mv{border:0;cursor:pointer;text-align:left}
+button.mv:hover{background:color-mix(in oklab,var(--m) 34%,transparent)}
+button.mv.on{box-shadow:inset 0 0 0 2px var(--m)}
+
+/* move key */
+.key{display:flex;flex-direction:column;gap:8px}
+.key-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.key-row .label{min-width:9.5em}
+@media (max-width:640px){.key-row .label{min-width:0;width:100%}}
+
+/* explain sheet */
+.explain{position:fixed;left:0;right:0;bottom:0;z-index:10;display:flex;justify-content:center;padding:0 16px calc(16px + env(safe-area-inset-bottom,0px))}
+.explain-card{width:100%;max-width:560px;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.22);padding:16px 18px;display:flex;flex-direction:column;gap:8px}
+.explain-top{display:flex;align-items:center;gap:10px}
+.explain-top b{font-size:17px}
+.explain-top .x{margin-left:auto;border:0;background:var(--sunk);color:var(--ink);width:32px;height:32px;border-radius:8px;font-size:18px;line-height:1}
+.explain p{margin:0;font-size:15px;line-height:1.5;max-width:62ch}
 
 /* lyrics loader */
 details.loader{background:var(--surface);border:1px dashed var(--line);border-radius:12px;padding:12px 16px}
@@ -132,6 +149,11 @@ ul.tips{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;fo
   <nav class="map" id="map" aria-label="Song map"></nav>
 
   <div class="picker" id="picker" role="group" aria-label="Whose moves to focus"></div>
+
+  <section class="key" aria-label="Move key">
+    <div class="label">Moves · tap any move, here or in the sheet, to see how to do it</div>
+    <div id="key"></div>
+  </section>
 
   <section class="stage" aria-label="Rehearse">
     <div class="stage-top">
@@ -198,8 +220,15 @@ ul.tips{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;fo
   </div>
 </div>
 
+<div class="explain" id="explain" hidden role="dialog" aria-label="How to do this move">
+  <div class="explain-card">
+    <div class="explain-top"><span id="ex-chip"></span><b id="ex-name"></b><button type="button" class="x" id="ex-close" aria-label="Close">×</button></div>
+    <p id="ex-how"></p>
+  </div>
+</div>
+
 <script>
-const D = ["Savi","Tim","Ali","Aryaman","Jishnuu"];
+const D =["Savi","Tim","Ali","Aryaman","Jishnuu"];
 const TOTAL = 82;
 const SECTIONS = [
   [1,4,"Intro chant","backs to crowd, male voice"],
@@ -313,7 +342,29 @@ function code(t){
   return "FREEZE";
 }
 const esc = s => s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const chip = t => { const c = code(t); return `<span class="mv${c==="GONE"?" gone":""}" style="--m:var(--m-${c})">${esc(t)}</span>`; };
+const chip = t => { const c = code(t); return `<button type="button" class="mv${c==="GONE"?" gone":""}" data-code="${c}" style="--m:var(--m-${c})">${esc(t)}</button>`; };
+
+const HOW = {
+  ST: ["Standing twerk", "Feet wider than your shoulders, bend your knees, hands on your knees. Bounce your butt up and down to the beat. That's the whole move."],
+  SQUAT: ["Low twerk", "Same as a standing twerk, but sit lower like you're about to sit in a chair. Smaller, faster bounces."],
+  SIDE: ["Side twerk", "Turn sideways so your shoulder points at the crowd, then do a regular standing twerk. The crowd sees it from the side."],
+  POP: ["Booty pop", "Push your butt out hard on one beat, then freeze. Next beat, pop it again. Sharp and slow, not a bounce."],
+  FT: ["Floor twerk", "Get on your hands and knees and bounce your butt up and down."],
+  SOLO: ["Solo", "Your moment. Get out front and shake it however you want while everyone hypes you. Dumber is better."],
+  WT: ["Wall twerk", "Put your hands on the wall, or on the back of whoever is bracing, lean in, and twerk."],
+  OVER: ["Over", "The BASE guy is on his back. Stand with one foot on each side of his hips, squat a little, and twerk over him. Don't sit or stand on him."],
+  BASE: ["Base", "Lie on your back, knees bent, feet flat on the floor. Lift your hips and bounce them. The OVER guys twerk above you."],
+  WALK: ["Walk", "Walk around the twerkers, slow and chill, like you're browsing a store. No dancing at all."],
+  HOVER: ["Hover", "Someone is floor twerking. Stand over him with one foot on each side and bounce or jump in place. Never step on him."],
+  SLAP: ["Slap", "Walk up and slap the twerker's butt on the beat. Light, for the bit, not a real hit."],
+  CATCH: ["Catch", "Stand still while someone twerks on you. React big: shocked face, hands up, look at the crowd."],
+  HYPE: ["Hype", "Be the crowd. Point at whoever's twerking, fan yourself, throw fake money, yell. No dancing."],
+  STAND: ["Stand", "Just stand there. Arms crossed, nod slowly like you've seen better."],
+  BRACE: ["Brace", "Bend over with your hands on your knees and stay still and solid, so someone can twerk on you."],
+  FREEZE: ["Freeze", "Stop and hold a pose, any pose. Don't move until the next switch."],
+  BACK: ["Back turned", "Stand facing away from the crowd and don't move until it's your turn to turn around."],
+  GONE: ["Gone", "You've walked off. Stay off stage until the song ends."]
+};
 
 const store = {
   get(k,d){ try { const v = localStorage.getItem("wap:"+k); return v===null ? d : JSON.parse(v); } catch(e){ return d; } },
@@ -369,6 +420,32 @@ function renderPicker(){
 
 /* legend */
 document.getElementById("legend").innerHTML = LEGEND.map(([g,items]) => `<span class="label lg-h">${g}</span>` + items.map(([c,d]) => `${chip(c)}<span>${esc(d)}</span>`).join("")).join("");
+document.getElementById("key").innerHTML = LEGEND.map(([g,items]) => `<div class="key-row"><span class="label">${g}</span>${items.map(([c]) => chip(c)).join("")}</div>`).join("");
+
+/* tap a move to see how to do it */
+const explain = document.getElementById("explain");
+let openCode = null;
+function markOn(c){
+  document.querySelectorAll("button.mv.on").forEach(b => b.classList.remove("on"));
+  if (c) document.querySelectorAll(`button.mv[data-code="${c}"]`).forEach(b => b.classList.add("on"));
+}
+function hideHow(){ explain.hidden = true; openCode = null; markOn(null); }
+function showHow(c){
+  const h = HOW[c]; if (!h) return;
+  if (openCode === c && !explain.hidden){ hideHow(); return; }
+  openCode = c;
+  document.getElementById("ex-chip").innerHTML = `<span class="mv" style="--m:var(--m-${c})">${c}</span>`;
+  document.getElementById("ex-name").textContent = h[0];
+  document.getElementById("ex-how").textContent = h[1];
+  explain.hidden = false;
+  markOn(c);
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest("button.mv[data-code]");
+  if (b) showHow(b.dataset.code);
+});
+document.getElementById("ex-close").onclick = hideHow;
+document.addEventListener("keydown", e => { if (e.key === "Escape") hideHow(); });
 
 /* sheet */
 const sheet = document.getElementById("sheet");
