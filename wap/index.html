@@ -12,7 +12,7 @@
 :root{
   --bg:#fbf6f3; --surface:#ffffff; --sunk:#f5ece8; --ink:#1f1418; --muted:#7d6872; --line:#ecdfe4;
   --accent:#cf1259; --accent-ink:#ffffff; --accent-soft:#fde3ed;
-  --m-ST:#e0457b; --m-SQUAT:#c2185b; --m-SIDE:#ec6aa0; --m-POP:#e53950; --m-WIND:#d63384; --m-JIGGLE:#f0748f; --m-KNEE:#f59e0b; --m-BACKUP:#a855f7; --m-HYPE:#3b82f6; --m-STEP:#0891b2; --m-ROLL:#6366f1; --m-SHIMMY:#65a30d; --m-FT:#ee7424; --m-WT:#8b5cf6; --m-BRACE:#64748b; --m-BASE:#0e9f9a;
+  --m-ST:#e0457b; --m-SQUAT:#c2185b; --m-SIDE:#ec6aa0; --m-POP:#e53950; --m-WIND:#d63384; --m-JIGGLE:#f0748f; --m-KNEE:#f59e0b; --m-BACKUP:#a855f7; --m-HYPE:#3b82f6; --m-WALK:#0891b2; --m-JUMP:#6366f1; --m-STAND:#94a3b8; --m-STEP:#0891b2; --m-ROLL:#6366f1; --m-SHIMMY:#65a30d; --m-FT:#ee7424; --m-WT:#8b5cf6; --m-BRACE:#64748b; --m-BASE:#0e9f9a;
   --m-OVER:#c026d3; --m-DROP:#c99712; --m-STRUT:#2563eb; --m-SOLO:#16a34a; --m-FREEZE:#94a3b8; --m-POSE:#b45309; --m-MOP:#db2777;
   --m-BACK:#a3a3a3; --m-GONE:transparent;
   --display:"Bowlby One","Arial Black",Impact,sans-serif;
@@ -126,7 +126,7 @@ ul.tips{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;fo
   <header>
     <div class="label">Pledge task · Cardi B feat. Megan Thee Stallion</div>
     <h1>WAP <em>Pledge</em> Choreo</h1>
-    <p class="sub">5 dancers, 82 lyric lines, about 4 minutes. Goal is not awesome, just not awful. Twerks mixed with easy moves like a two-step, body roll, and shimmy. The cue words tell you when to switch. Pick yourself below, then step through or scan the full sheet.</p>
+    <p class="sub">5 dancers, 82 lyric lines, about 4 minutes. Goal is not awesome, just not awful. Two jobs: shake it, or do nothing around whoever is. No real dancing needed. The cue words tell you when to switch. Pick yourself below, then step through or scan the full sheet.</p>
   </header>
 
   <nav class="map" id="map" aria-label="Song map"></nav>
@@ -180,9 +180,10 @@ ul.tips{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;fo
     <section class="panel">
       <h2>Running it live</h2>
       <ul class="tips">
-        <li>Hooks are unison, everyone together. In the verses some guys twerk while others step, shimmy, or hype, so watch your own column.</li>
+        <li>Two jobs only: shake it, or do nothing (walk, jump, hype, stand). Nobody has to actually dance.</li>
+        <li>Hooks are unison, everyone shaking. In the verses watch your own column.</li>
         <li>On HYPE? Sell it. You're the crowd, and it makes whoever's twerking look ten times better.</li>
-        <li>Lost? STEP until the next switch.</li>
+        <li>Lost? ST until the next switch.</li>
         <li>Everyone is BASE at least once, and everyone gets a solo.</li>
         <li>Lost? Twerk till the next hook. Hooks are the reset point.</li>
         <li>Savi calls switches if timing drifts.</li>
@@ -210,85 +211,85 @@ const SECTIONS = [
   [73,82,"Outro chant","strut off one by one"]
 ];
 const PLAN = [
-  [1,1,"chant #1",["turn, ST","back turned","back turned","back turned","back turned"]],
-  [2,2,"chant #2",["ST","turn, ST","back turned","back turned","back turned"]],
-  [3,3,"chant #3",["ST","ST","turn, ST","back turned","back turned"]],
-  [4,4,"chant #4 (hol' up)",["ST","ST","ST","turn, ST","turn last, ALL FREEZE on hol' up"]],
-  [5,5,"seven days a week","STRUT into V"],
-  [6,6,"pullout game weak, woo","ROLL"],
-  [7,7,"yeah x4","STEP"],
-  [8,9,"some WAP / bucket and a mop","ST"],
-  [10,10,"everything you got","DROP"],
-  [11,12,"catch a charge / extra large",["ST center","STEP","STEP","STEP","STEP"]],
-  [13,14,"in your face / credit card",["SHIMMY","ST, back to crowd","ST, back to crowd","SHIMMY","SHIMMY"]],
-  [15,16,"hop on top / kegel",["OVER Ali","HYPE","BASE","HYPE","HYPE"]],
-  [17,17,"look in my eyes","get up, ROLL"],
+  [1,1,"chant #1",["turn, POP","back turned","back turned","back turned","back turned"]],
+  [2,2,"chant #2",["POP","turn, POP","back turned","back turned","back turned"]],
+  [3,3,"chant #3",["POP","POP","turn, POP","back turned","back turned"]],
+  [4,4,"chant #4 (hol' up)",["POP","POP","POP","turn, POP","turn last, ALL FREEZE on hol' up"]],
+  [5,5,"seven days a week","WALK into a V"],
+  [6,6,"pullout game weak, woo","POP"],
+  [7,7,"yeah x4","ST"],
+  [8,8,"some WAP","SQUAT"],
+  [9,9,"bucket and a mop","SIDE"],
+  [10,10,"everything you got","POP"],
+  [11,12,"catch a charge / extra large",["ST center","WALK around Savi","SIDE","SIDE","JUMP next to Savi"]],
+  [13,14,"in your face / credit card",["HYPE","ST, back to crowd","STAND","ST, back to crowd","WALK"]],
+  [15,16,"hop on top / kegel",["OVER Ali","JUMP next to Ali","BASE","HYPE","STAND, arms crossed"]],
+  [17,17,"look in my eyes","get up, POP"],
   [18,19,"take a dive / tie me up","FT"],
-  [20,20,"wear a disguise","get up, STEP"],
-  [21,22,"Mack truck, garage / scream",["STEP center","WT on Aryaman","BRACE","BRACE","WT on Ali"]],
-  [23,24,"make a scene / don't clean",["STRUT across the front","SHIMMY","SHIMMY","SHIMMY","SHIMMY"]],
-  [25,25,"got this ring (ayy, ayy)","FREEZE on ayy ayy"],
+  [20,20,"wear a disguise",["SQUAT","SQUAT","HYPE","SQUAT","WALK"]],
+  [21,22,"Mack truck, garage / scream",["WT on Tim","BRACE","WT on Aryaman","BRACE","JUMP, beep beep"]],
+  [23,24,"make a scene / don't clean",["SIDE","SIDE","WALK across the front","SIDE","SIDE"]],
+  [25,25,"got this ring (ayy, ayy)","POP on each ayy, FREEZE"],
   [26,27,"drip down the side / jump out","WT on the wall"],
-  [28,28,"where to put it",["SOLO","HYPE","HYPE","HYPE","HYPE"]],
-  [29,29,"pow, pow, pow",["HYPE","SOLO","HYPE","HYPE","HYPE"]],
-  [30,30,"bite your lip",["HYPE","HYPE","SOLO","HYPE","HYPE"]],
-  [31,31,"ask for a car",["HYPE","HYPE","HYPE","SOLO","HYPE"]],
-  [32,32,"for a thang",["HYPE","HYPE","HYPE","HYPE","SOLO"]],
-  [33,33,"made his mind up","turn, DROP"],
-  [34,35,"boots and coat / click click",["STEP","OVER","STEP","BASE","OVER"]],
-  [36,36,"mwah, mwah, mwah","ROLL"],
-  [37,37,"make it rain",["HYPE, throw money","ST","HYPE, throw money","ST","ST"]],
+  [28,28,"where to put it",["SOLO","HYPE the soloist","HYPE the soloist","HYPE the soloist","HYPE the soloist"]],
+  [29,29,"pow, pow, pow",["HYPE the soloist","SOLO","HYPE the soloist","HYPE the soloist","HYPE the soloist"]],
+  [30,30,"bite your lip",["HYPE the soloist","HYPE the soloist","SOLO","HYPE the soloist","HYPE the soloist"]],
+  [31,31,"ask for a car",["HYPE the soloist","HYPE the soloist","HYPE the soloist","SOLO","HYPE the soloist"]],
+  [32,32,"for a thang",["HYPE the soloist","HYPE the soloist","HYPE the soloist","HYPE the soloist","SOLO"]],
+  [33,33,"made his mind up","turn, POP"],
+  [34,35,"boots and coat / click click",["WALK","OVER","HYPE, hand-camera photos","BASE","OVER"]],
+  [36,36,"mwah, mwah, mwah","POP on each mwah"],
+  [37,37,"make it rain",["HYPE, throw money","SQUAT","HYPE, throw money","SQUAT","SQUAT"]],
   [38,39,"hard hitter / weed smoker","FT in a line"],
   [40,41,"king cobra / lean over",["pop up 1st","pop up 2nd","pop up 3rd","pop up 4th","pop up 5th"],"canon, each pops up into ST"],
-  [42,43,"where I'm headed / credit","SHIMMY"],
-  [44,45,"got a beard / diabetic",["BASE","HYPE","OVER Savi","HYPE","HYPE"]],
-  [46,47,"spit / gulp lines","STEP"],
+  [42,43,"where I'm headed / credit","SIDE, all facing the same way"],
+  [44,45,"got a beard / diabetic",["BASE","JUMP next to Savi","OVER Savi","WALK","STAND"]],
+  [46,47,"spit / gulp lines",["ST","STAND","ST","STAND","ST"]],
   [48,48,"back of my throat","ST, back to crowd"],
-  [49,50,"head game / soggy",["WT on Ali","WT on Ali","BRACE","STEP","STEP"]],
-  [51,51,"cops is behind me","FT double speed"],
-  [52,52,"tryna sign me, woo","get up, ROLL"],
-  [53,54,"your honor / switch my wig","STEP, circle facing out"],
-  [55,56,"on his knees / beatin'","ST, circle rotates"],
-  [57,58,"food chain / bottom-feeder",["OVER","BASE center","OVER","HYPE","HYPE"]],
-  [59,60,"big demeanor / meet ya","ROLL"],
+  [49,50,"head game / soggy",["WT on Ali","WT on Ali","BRACE","HYPE","JUMP"]],
+  [51,51,"cops is behind me",["FT double speed","FT double speed","FT double speed","HYPE, siren hands","HYPE, siren hands"]],
+  [52,52,"tryna sign me, woo","get up, POP on woo"],
+  [53,54,"your honor / switch my wig",["ST","WALK the circle","ST","WALK the circle","ST"],"circle, twerkers facing out"],
+  [55,56,"on his knees / beatin'","SQUAT"],
+  [57,58,"food chain / bottom-feeder",["OVER","BASE center","OVER","JUMP next to Tim","JUMP next to Tim"]],
+  [59,60,"big demeanor / meet ya",["FT","FT","FT","WALK","WALK"]],
   [61,62,"can't bang / I like pain",["WT train","WT train","WT train","WT train","BRACE, front of train"]],
-  [63,63,"whose is it?","SHIMMY"],
+  [63,63,"whose is it?","ST"],
   [64,64,"spell my name","ST, FREEZE on ah"],
-  [65,65,"yeah x3","STEP"],
-  [66,67,"some WAP / bucket and a mop",["OVER","OVER","HYPE","HYPE","BASE center"]],
-  [68,68,"everything you got","get up, ROLL"],
-  [69,69,"from the top, make it drop","DROP"],
+  [65,65,"yeah x3","ST"],
+  [66,67,"some WAP / bucket and a mop",["OVER","OVER","JUMP","JUMP","BASE center"]],
+  [68,68,"everything you got","get up, SQUAT"],
+  [69,69,"from the top, make it drop","POP"],
   [70,70,"bucket and a mop","ST"],
-  [71,71,"wap, wap, wap","ST double speed"],
+  [71,71,"wap, wap, wap","POP x3"],
   [72,72,"macaroni in a pot, huh","FREEZE on huh"],
-  [73,74,"chant",["STRUT off","STEP","STEP","STEP","STEP"]],
-  [75,76,"chant",["gone","STRUT off","ST","ST","ST"]],
-  [77,78,"chant",["gone","gone","STRUT off","STEP","STEP"]],
-  [79,80,"chant",["gone","gone","gone","STRUT off","ST"]],
+  [73,74,"chant",["WALK off","ST","SIDE","ST","SIDE"]],
+  [75,76,"chant",["gone","WALK off","SIDE","ST","SIDE"]],
+  [77,78,"chant",["gone","gone","WALK off","SQUAT","SQUAT"]],
+  [79,80,"chant",["gone","gone","gone","WALK off","SQUAT"]],
   [81,82,"chant",["gone","gone","gone","gone","FT alone, COLLAPSE on last line"]]
 ];
 const LEGEND = [
-  ["Twerks", [
+  ["Shaking it", [
     ["ST","standing twerk: hands on knees, bounce"],
-    ["FT","floor twerk: all fours, bounce"]
+    ["SQUAT","low twerk: sit deeper, smaller and faster bounce"],
+    ["SIDE","side twerk: turn your side to the crowd so they see it in profile"],
+    ["POP","booty pop: one sharp hit per beat, stick it out and hold"],
+    ["FT","floor twerk: all fours, bounce"],
+    ["SOLO","your own freestyle, shake it however you want"]
   ]],
-  ["With a partner", [
+  ["Shaking it with a partner", [
     ["WT","twerk against the wall or a bracing guy"],
-    ["BRACE","be the wall: hands on knees, hold steady so someone can twerk on you"],
-    ["BASE","lie on your back, bridge and bounce hips"],
-    ["OVER","straddle the BASE guy and twerk (don't actually stand on him)"]
+    ["OVER","straddle the BASE guy and twerk (don't actually stand on him)"],
+    ["BASE","lie on your back, bridge and bounce hips"]
   ]],
-  ["Easy dance moves", [
-    ["STEP","two-step: step side to side, snap on the beat"],
-    ["ROLL","body roll: chest, stomach, hips, top to bottom, slow"],
-    ["SHIMMY","shoulder shimmy, lean back a little"],
-    ["STRUT","Kylie walk, hand on hip"],
-    ["DROP","squat down, pop back up"]
-  ]],
-  ["Other", [
-    ["HYPE","hype whoever is twerking: point, fan yourself, throw money"],
-    ["FREEZE","hold a pose"],
-    ["SOLO","freestyle, anything you want, full commitment"]
+  ["Doing nothing (no dancing)", [
+    ["WALK","calm walk around the twerkers, like you're browsing"],
+    ["JUMP","jump in place next to a twerker like a hype man"],
+    ["HYPE","point, fan yourself, throw money, lose your mind"],
+    ["STAND","just stand there unbothered, arms crossed, nodding"],
+    ["BRACE","be the wall: hands on knees, hold still so someone can twerk on you"],
+    ["FREEZE","hold a pose"]
   ]]
 ];
 
@@ -302,7 +303,7 @@ const secOf = n => SECTIONS.find(s => n>=s[0] && n<=s[1]);
 function code(t){
   if (/^gone$/i.test(t)) return "GONE";
   if (/back turned/i.test(t)) return "BACK";
-  const m = t.match(/\b(STRUT|STEP|ROLL|SHIMMY|HYPE|ST|FT|WT|BRACE|BASE|OVER|DROP|SOLO|FREEZE)\b/);
+  const m = t.match(/\b(WALK|JUMP|STAND|HYPE|SQUAT|SIDE|POP|ST|FT|WT|BRACE|BASE|OVER|SOLO|FREEZE)\b/);
   if (m) return m[1];
   if (/pop up/i.test(t)) return "ST";
   return "FREEZE";
