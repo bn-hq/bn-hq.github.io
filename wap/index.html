@@ -105,7 +105,7 @@ tr.row:hover td{background:color-mix(in oklab,var(--accent) 5%,transparent)}
 tr.row.cur td{background:var(--accent-soft)}
 tr.row.cur td.n{color:var(--accent);font-weight:700}
 tr.start td{border-top:2px solid var(--line)}
-td .ditto{color:var(--muted);opacity:.45;font-size:14px}
+td .ditto{color:var(--muted);font-size:12px;font-style:italic;font-weight:500}
 th.me,td.me{background:color-mix(in oklab,var(--accent) 7%,transparent)}
 .note{display:block;color:var(--muted);font-size:12px;margin-top:3px;font-style:italic}
 
@@ -384,13 +384,13 @@ function renderSheet(){
       const lyCell = ly ? esc(ly) : `<span class="ph">line ${n}</span>`;
       let cells;
       if (!L.start){
-        cells = (L.all && cols.length>1) ? `<td colspan="${cols.length}"><span class="ditto">〃</span></td>` : cols.map(()=>`<td><span class="ditto">〃</span></td>`).join("");
+        cells = (L.all && cols.length>1) ? `<td colspan="${cols.length}"><span class="ditto">continued</span></td>` : cols.map(()=>`<td><span class="ditto">continued</span></td>`).join("");
       } else if (L.all && cols.length>1){
         cells = `<td colspan="${cols.length}">${chip(L.text)} <span class="hint">all</span>${L.note?`<span class="note">${esc(L.note)}</span>`:""}</td>`;
       } else {
         cells = cols.map((i,k) => `<td>${chip(L.moves[i])}${L.note && k===0 ? `<span class="note">${esc(L.note)}</span>` : ""}</td>`).join("");
       }
-      h += `<tr class="row${L.start?" start":""}${n===cur?" cur":""}" data-n="${n}"><td class="n">${n}</td><td class="cue">${L.start ? esc(L.cue) : `<span class="ditto">〃</span>`}</td><td class="ly">${lyCell}</td>${cells}</tr>`;
+      h += `<tr class="row${L.start?" start":""}${n===cur?" cur":""}" data-n="${n}"><td class="n">${n}</td><td class="cue">${L.start ? esc(L.cue) : `<span class="ditto">continued</span>`}</td><td class="ly">${lyCell}</td>${cells}</tr>`;
     }
   }
   sheet.innerHTML = h + "</tbody>";
