@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>WAP Pledge Choreo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+:root{
+  --bg:#fbf6f3; --surface:#ffffff; --sunk:#f5ece8; --ink:#1f1418; --muted:#7d6872; --line:#ecdfe4;
+  --accent:#cf1259; --accent-ink:#ffffff; --accent-soft:#fde3ed;
+  --m-ST:#e0457b; --m-SQUAT:#c2185b; --m-SIDE:#ec6aa0; --m-POP:#e53950; --m-WIND:#d63384; --m-JIGGLE:#f0748f; --m-KNEE:#f59e0b; --m-BACKUP:#a855f7; --m-HYPE:#3b82f6; --m-STEP:#0891b2; --m-ROLL:#6366f1; --m-SHIMMY:#65a30d; --m-FT:#ee7424; --m-WT:#8b5cf6; --m-BRACE:#64748b; --m-BASE:#0e9f9a;
+  --m-OVER:#c026d3; --m-DROP:#c99712; --m-STRUT:#2563eb; --m-SOLO:#16a34a; --m-FREEZE:#94a3b8; --m-POSE:#b45309; --m-MOP:#db2777;
+  --m-BACK:#a3a3a3; --m-GONE:transparent;
+  --display:"Bowlby One","Arial Black",Impact,sans-serif;
+  --body:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#140e11; --surface:#1e161a; --sunk:#191215; --ink:#f7eef2; --muted:#a8929c; --line:#34262d;
+    --accent:#ff4d8a; --accent-ink:#1a0710; --accent-soft:#3b1526;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#140e11; --surface:#1e161a; --sunk:#191215; --ink:#f7eef2; --muted:#a8929c; --line:#34262d;
+  --accent:#ff4d8a; --accent-ink:#1a0710; --accent-soft:#3b1526;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.45;padding-inline:16px;padding-block:20px 48px}
+.wrap{max-width:1100px;margin:0 auto;display:flex;flex-direction:column;gap:22px}
+h1{font-family:var(--display);font-weight:400;font-size:clamp(34px,7vw,64px);line-height:.95;margin:0;letter-spacing:-.01em;text-wrap:balance}
+h1 em{font-style:normal;color:var(--accent)}
+h2{font-family:var(--display);font-weight:400;font-size:20px;margin:0;letter-spacing:.01em}
+.sub{color:var(--muted);margin:8px 0 0;max-width:62ch}
+.label{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);font-weight:700}
+button{font:inherit;cursor:pointer}
+button:focus-visible,textarea:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* song map */
+.map{display:flex;gap:3px;width:100%}
+.map button{border:0;background:var(--sunk);color:var(--ink);padding:8px 6px;border-radius:6px;text-align:left;min-width:0;flex-basis:0;display:flex;flex-direction:column;gap:2px;transition:background .15s}
+.map button:hover{background:var(--accent-soft)}
+.map button.on{background:var(--accent);color:var(--accent-ink)}
+.map b{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.map span{font-family:var(--mono);font-size:10px;opacity:.75}
+@media (max-width:640px){.map{flex-wrap:wrap}.map button{flex:1 1 30%!important}}
+
+/* dancer picker */
+.picker{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.picker button{border:1.5px solid var(--line);background:var(--surface);color:var(--ink);padding:6px 14px;border-radius:999px;font-weight:600}
+.picker button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+
+/* rehearse */
+.stage{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:14px}
+.stage-top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+.lnum{font-family:var(--display);font-size:44px;line-height:1;color:var(--accent);font-variant-numeric:tabular-nums}
+.lnum small{font-size:16px;color:var(--muted)}
+.lyric{font-size:clamp(18px,3vw,24px);font-weight:600;min-height:1.4em;text-wrap:balance}
+.lyric.empty{color:var(--muted);font-weight:500;font-size:15px}
+.cards{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+@media (max-width:720px){.cards{grid-template-columns:repeat(2,1fr)}.cards .card:last-child{grid-column:1/-1}}
+.card{background:var(--sunk);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:6px;border:2px solid transparent}
+.card.me{border-color:var(--accent);background:var(--accent-soft)}
+.card .who{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.card .mv{font-size:13px}
+.controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.btn{border:0;border-radius:8px;padding:9px 16px;font-weight:700;background:var(--sunk);color:var(--ink)}
+.btn.primary{background:var(--accent);color:var(--accent-ink)}
+.hint{color:var(--muted);font-size:13px}
+
+/* move chips */
+.mv{display:inline-block;font-family:var(--mono);font-weight:700;font-size:12px;padding:3px 8px;border-radius:6px;
+  background:color-mix(in oklab,var(--m) 20%,transparent);color:var(--ink);box-shadow:inset 0 0 0 1px color-mix(in oklab,var(--m) 45%,transparent);line-height:1.35}
+.mv.gone{background:none;box-shadow:none;color:var(--muted);font-weight:500;opacity:.6}
+
+/* lyrics loader */
+details.loader{background:var(--surface);border:1px dashed var(--line);border-radius:12px;padding:12px 16px}
+details.loader summary{cursor:pointer;font-weight:700;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+details.loader summary .status{font-weight:500;color:var(--muted);font-size:13px}
+.loader-body{display:flex;flex-direction:column;gap:10px;margin-top:12px}
+textarea{width:100%;min-height:160px;resize:vertical;font:13px/1.5 var(--mono);background:var(--sunk);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:10px}
+.offset{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:13px}
+.offset button{width:30px;height:30px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font-weight:700}
+
+/* table */
+.tablebox{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:820px}
+table.focus{min-width:0}
+th,td{padding:7px 10px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
+thead th{position:sticky;top:0;background:var(--surface);font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);z-index:1}
+td.n{font-family:var(--mono);font-size:12px;color:var(--muted);width:40px;font-variant-numeric:tabular-nums}
+td.ly{font-size:14px;max-width:280px;min-width:160px}
+td.cue{font-size:13px;font-weight:700;color:var(--accent);min-width:120px;max-width:170px}
+.cueline{font-size:14px;font-weight:700;color:var(--accent)}
+td.ly .ph{color:var(--muted);opacity:.6;font-size:12px}
+tr.sec td{background:var(--sunk);padding:10px}
+tr.sec .st{font-family:var(--display);font-size:15px}
+tr.sec .sn{color:var(--muted);font-size:13px;margin-left:8px}
+tr.row{cursor:pointer}
+tr.row:hover td{background:color-mix(in oklab,var(--accent) 5%,transparent)}
+tr.row.cur td{background:var(--accent-soft)}
+tr.row.cur td.n{color:var(--accent);font-weight:700}
+tr.start td{border-top:2px solid var(--line)}
+td .ditto{color:var(--muted);opacity:.45;font-size:14px}
+th.me,td.me{background:color-mix(in oklab,var(--accent) 7%,transparent)}
+.note{display:block;color:var(--muted);font-size:12px;margin-top:3px;font-style:italic}
+
+/* legend + notes */
+.two{display:grid;grid-template-columns:1.2fr 1fr;gap:16px}
+@media (max-width:760px){.two{grid-template-columns:1fr}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px}
+.legend{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;align-items:center;font-size:14px}
+.lg-h{grid-column:1/-1;margin-top:8px}
+.lg-h:first-child{margin-top:0}
+ul.tips{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;font-size:14px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="label">Pledge task · Cardi B feat. Megan Thee Stallion</div>
+    <h1>WAP <em>Pledge</em> Choreo</h1>
+    <p class="sub">5 dancers, 82 lyric lines, about 4 minutes. Goal is not awesome, just not awful. Twerks mixed with easy moves like a two-step, body roll, and shimmy. The cue words tell you when to switch. Pick yourself below, then step through or scan the full sheet.</p>
+  </header>
+
+  <nav class="map" id="map" aria-label="Song map"></nav>
+
+  <div class="picker" id="picker" role="group" aria-label="Whose moves to focus"></div>
+
+  <section class="stage" aria-label="Rehearse">
+    <div class="stage-top">
+      <div class="lnum" id="lnum">1 <small>/ 82</small></div>
+      <div class="label" id="lsec">Intro chant</div>
+    </div>
+    <div class="cueline" id="cue"></div>
+    <div class="lyric empty" id="lyric">Paste the lyrics below to see each line here.</div>
+    <div class="cards" id="cards"></div>
+    <div class="controls">
+      <button class="btn" id="prev">← Prev</button>
+      <button class="btn primary" id="next">Next →</button>
+      <button class="btn" id="jump">Next switch ⇥</button>
+      <span class="hint" id="nexthint"></span>
+    </div>
+    <div class="hint">Keys: ← → step, S jumps to the next move change. Click any row in the sheet to jump there.</div>
+  </section>
+
+  <details class="loader" id="loader">
+    <summary>Line up lyrics <span class="status" id="lstatus">No lyrics loaded yet</span></summary>
+    <div class="loader-body">
+      <div class="hint">Open the song on Genius, select the whole page (Ctrl/Cmd+A), copy, and paste it here. Page junk, links, section headers like [Chorus], and the "You might also like" block get stripped automatically. Lyrics stay in your browser only.</div>
+      <textarea id="paste" placeholder="Paste Genius lyrics here…"></textarea>
+      <div class="controls">
+        <button class="btn primary" id="apply">Line them up</button>
+        <button class="btn" id="clear">Clear</button>
+        <span class="offset">Offset
+          <button id="offm" aria-label="Shift lyrics up">−</button>
+          <span id="offv">0</span>
+          <button id="offp" aria-label="Shift lyrics down">+</button>
+        </span>
+        <span class="hint">If line 1 isn't the first chant line, nudge this.</span>
+      </div>
+    </div>
+  </details>
+
+  <section aria-label="Full sheet">
+    <div class="tablebox"><table id="sheet"></table></div>
+  </section>
+
+  <div class="two">
+    <section class="panel">
+      <h2>Moves</h2>
+      <div class="legend" id="legend"></div>
+    </section>
+    <section class="panel">
+      <h2>Running it live</h2>
+      <ul class="tips">
+        <li>Hooks are unison, everyone together. In the verses some guys twerk while others step, shimmy, or hype, so watch your own column.</li>
+        <li>On HYPE? Sell it. You're the crowd, and it makes whoever's twerking look ten times better.</li>
+        <li>Lost? STEP until the next switch.</li>
+        <li>Everyone is BASE at least once, and everyone gets a solo.</li>
+        <li>Lost? Twerk till the next hook. Hooks are the reset point.</li>
+        <li>Savi calls switches if timing drifts.</li>
+        <li>Commit to the faces. Confident bad dancing beats embarrassed okay dancing.</li>
+        <li>Practice: 2 sessions of about 45 min. Drill the moves first, then run section by section.</li>
+        <li>The music video is the censored version. Perform to whichever track you practiced with.</li>
+        <li>If the track's outro runs long, Jishnuu keeps FT till it ends.</li>
+      </ul>
+    </section>
+  </div>
+</div>
+
+<script>
+const D = ["Savi","Tim","Ali","Aryaman","Jishnuu"];
+const TOTAL = 82;
+const SECTIONS = [
+  [1,4,"Intro chant","backs to crowd, male voice"],
+  [5,6,"Cardi lead-in",""],
+  [7,10,"Hook",""],
+  [11,25,"Cardi verse 1",""],
+  [26,37,"Megan verse 1","on the wall"],
+  [38,52,"Cardi verse 2",""],
+  [53,64,"Megan verse 2",""],
+  [65,72,"Final hook",""],
+  [73,82,"Outro chant","strut off one by one"]
+];
+const PLAN = [
+  [1,1,"chant #1",["turn, ST","back turned","back turned","back turned","back turned"]],
+  [2,2,"chant #2",["ST","turn, ST","back turned","back turned","back turned"]],
+  [3,3,"chant #3",["ST","ST","turn, ST","back turned","back turned"]],
+  [4,4,"chant #4 (hol' up)",["ST","ST","ST","turn, ST","turn last, ALL FREEZE on hol' up"]],
+  [5,5,"seven days a week","STRUT into V"],
+  [6,6,"pullout game weak, woo","ROLL"],
+  [7,7,"yeah x4","STEP"],
+  [8,9,"some WAP / bucket and a mop","ST"],
+  [10,10,"everything you got","DROP"],
+  [11,12,"catch a charge / extra large",["ST center","STEP","STEP","STEP","STEP"]],
+  [13,14,"in your face / credit card",["SHIMMY","ST, back to crowd","ST, back to crowd","SHIMMY","SHIMMY"]],
+  [15,16,"hop on top / kegel",["OVER Ali","HYPE","BASE","HYPE","HYPE"]],
+  [17,17,"look in my eyes","get up, ROLL"],
+  [18,19,"take a dive / tie me up","FT"],
+  [20,20,"wear a disguise","get up, STEP"],
+  [21,22,"Mack truck, garage / scream",["STEP center","WT on Aryaman","BRACE","BRACE","WT on Ali"]],
+  [23,24,"make a scene / don't clean",["STRUT across the front","SHIMMY","SHIMMY","SHIMMY","SHIMMY"]],
+  [25,25,"got this ring (ayy, ayy)","FREEZE on ayy ayy"],
+  [26,27,"drip down the side / jump out","WT on the wall"],
+  [28,28,"where to put it",["SOLO","HYPE","HYPE","HYPE","HYPE"]],
+  [29,29,"pow, pow, pow",["HYPE","SOLO","HYPE","HYPE","HYPE"]],
+  [30,30,"bite your lip",["HYPE","HYPE","SOLO","HYPE","HYPE"]],
+  [31,31,"ask for a car",["HYPE","HYPE","HYPE","SOLO","HYPE"]],
+  [32,32,"for a thang",["HYPE","HYPE","HYPE","HYPE","SOLO"]],
+  [33,33,"made his mind up","turn, DROP"],
+  [34,35,"boots and coat / click click",["STEP","OVER","STEP","BASE","OVER"]],
+  [36,36,"mwah, mwah, mwah","ROLL"],
+  [37,37,"make it rain",["HYPE, throw money","ST","HYPE, throw money","ST","ST"]],
+  [38,39,"hard hitter / weed smoker","FT in a line"],
+  [40,41,"king cobra / lean over",["pop up 1st","pop up 2nd","pop up 3rd","pop up 4th","pop up 5th"],"canon, each pops up into ST"],
+  [42,43,"where I'm headed / credit","SHIMMY"],
+  [44,45,"got a beard / diabetic",["BASE","HYPE","OVER Savi","HYPE","HYPE"]],
+  [46,47,"spit / gulp lines","STEP"],
+  [48,48,"back of my throat","ST, back to crowd"],
+  [49,50,"head game / soggy",["WT on Ali","WT on Ali","BRACE","STEP","STEP"]],
+  [51,51,"cops is behind me","FT double speed"],
+  [52,52,"tryna sign me, woo","get up, ROLL"],
+  [53,54,"your honor / switch my wig","STEP, circle facing out"],
+  [55,56,"on his knees / beatin'","ST, circle rotates"],
+  [57,58,"food chain / bottom-feeder",["OVER","BASE center","OVER","HYPE","HYPE"]],
+  [59,60,"big demeanor / meet ya","ROLL"],
+  [61,62,"can't bang / I like pain",["WT train","WT train","WT train","WT train","BRACE, front of train"]],
+  [63,63,"whose is it?","SHIMMY"],
+  [64,64,"spell my name","ST, FREEZE on ah"],
+  [65,65,"yeah x3","STEP"],
+  [66,67,"some WAP / bucket and a mop",["OVER","OVER","HYPE","HYPE","BASE center"]],
+  [68,68,"everything you got","get up, ROLL"],
+  [69,69,"from the top, make it drop","DROP"],
+  [70,70,"bucket and a mop","ST"],
+  [71,71,"wap, wap, wap","ST double speed"],
+  [72,72,"macaroni in a pot, huh","FREEZE on huh"],
+  [73,74,"chant",["STRUT off","STEP","STEP","STEP","STEP"]],
+  [75,76,"chant",["gone","STRUT off","ST","ST","ST"]],
+  [77,78,"chant",["gone","gone","STRUT off","STEP","STEP"]],
+  [79,80,"chant",["gone","gone","gone","STRUT off","ST"]],
+  [81,82,"chant",["gone","gone","gone","gone","FT alone, COLLAPSE on last line"]]
+];
+const LEGEND = [
+  ["Twerks", [
+    ["ST","standing twerk: hands on knees, bounce"],
+    ["FT","floor twerk: all fours, bounce"]
+  ]],
+  ["With a partner", [
+    ["WT","twerk against the wall or a bracing guy"],
+    ["BRACE","be the wall: hands on knees, hold steady so someone can twerk on you"],
+    ["BASE","lie on your back, bridge and bounce hips"],
+    ["OVER","straddle the BASE guy and twerk (don't actually stand on him)"]
+  ]],
+  ["Easy dance moves", [
+    ["STEP","two-step: step side to side, snap on the beat"],
+    ["ROLL","body roll: chest, stomach, hips, top to bottom, slow"],
+    ["SHIMMY","shoulder shimmy, lean back a little"],
+    ["STRUT","Kylie walk, hand on hip"],
+    ["DROP","squat down, pop back up"]
+  ]],
+  ["Other", [
+    ["HYPE","hype whoever is twerking: point, fan yourself, throw money"],
+    ["FREEZE","hold a pose"],
+    ["SOLO","freestyle, anything you want, full commitment"]
+  ]]
+];
+
+const lines = [];
+for (const [a,b,cue,m,note] of PLAN) {
+  const all = typeof m === "string";
+  for (let n=a; n<=b; n++) lines[n] = {n, cue, all, moves: all ? D.map(()=>m) : m, text: all ? m : null, start: n===a, a, b, note: note||""};
+}
+const secOf = n => SECTIONS.find(s => n>=s[0] && n<=s[1]);
+
+function code(t){
+  if (/^gone$/i.test(t)) return "GONE";
+  if (/back turned/i.test(t)) return "BACK";
+  const m = t.match(/\b(STRUT|STEP|ROLL|SHIMMY|HYPE|ST|FT|WT|BRACE|BASE|OVER|DROP|SOLO|FREEZE)\b/);
+  if (m) return m[1];
+  if (/pop up/i.test(t)) return "ST";
+  return "FREEZE";
+}
+const esc = s => s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const chip = t => { const c = code(t); return `<span class="mv${c==="GONE"?" gone":""}" style="--m:var(--m-${c})">${esc(t)}</span>`; };
+
+const store = {
+  get(k,d){ try { const v = localStorage.getItem("wap:"+k); return v===null ? d : JSON.parse(v); } catch(e){ return d; } },
+  set(k,v){ try { localStorage.setItem("wap:"+k, JSON.stringify(v)); } catch(e){} }
+};
+
+let me = store.get("me", null);
+let cur = store.get("cur", 1);
+let lyrics = store.get("lyrics", []);
+let offset = store.get("offset", 0);
+if (!(cur>=1 && cur<=TOTAL)) cur = 1;
+
+const lyricFor = n => { const v = lyrics[n-1+offset]; return v===undefined ? null : v; };
+
+function parseLyrics(txt){
+  const raw = txt.split(/\r?\n/).map(s => s.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").trim());
+  const isHeader = s => /^\[[^\]]*\]$/.test(s);
+  const first = raw.findIndex(s => /^\[(Intro|Verse|Chorus|Hook|Pre-Chorus|Refrain|Bridge|Outro|Part)\b[^\]]*\]$/i.test(s));
+  const out = [];
+  let skipping = false;
+  for (let i = first < 0 ? 0 : first; i < raw.length; i++){
+    let s = raw[i];
+    if (/^\d*\s*Embed$/i.test(s)) break;
+    if (/^You might also like/i.test(s)){
+      skipping = true;
+      s = s.replace(/^You might also like/i, "").trim();
+      if (!s) continue;
+    }
+    if (isHeader(s)){ skipping = false; continue; }
+    if (skipping || !s) continue;
+    if (first < 0 && (/Contributors?/i.test(s) || /^(Translations|Read More)/i.test(s) || /Lyrics$/i.test(s))) continue;
+    out.push(s);
+  }
+  return out;
+}
+
+/* song map */
+const map = document.getElementById("map");
+map.innerHTML = SECTIONS.map((s,i)=>`<button data-i="${i}" style="flex-grow:${s[1]-s[0]+1}"><b>${s[2]}</b><span>${s[0]}–${s[1]}</span></button>`).join("");
+map.addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; go(SECTIONS[+b.dataset.i][0], true); });
+
+/* picker */
+const picker = document.getElementById("picker");
+picker.innerHTML = `<span class="label" style="margin-right:4px">Focus</span>` + ["Everyone",...D].map(d=>`<button data-d="${d}">${d}</button>`).join("");
+picker.addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  me = b.dataset.d === "Everyone" ? null : b.dataset.d;
+  store.set("me", me); renderPicker(); renderSheet(); renderStage();
+});
+function renderPicker(){
+  picker.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String((b.dataset.d==="Everyone" && !me) || b.dataset.d===me)));
+}
+
+/* legend */
+document.getElementById("legend").innerHTML = LEGEND.map(([g,items]) => `<span class="label lg-h">${g}</span>` + items.map(([c,d]) => `${chip(c)}<span>${esc(d)}</span>`).join("")).join("");
+
+/* sheet */
+const sheet = document.getElementById("sheet");
+function renderSheet(){
+  const focusIdx = me ? D.indexOf(me) : -1;
+  const cols = focusIdx>=0 ? [focusIdx] : [0,1,2,3,4];
+  sheet.className = focusIdx>=0 ? "focus" : "";
+  let h = `<thead><tr><th>#</th><th>Cue</th><th>Lyric</th>${cols.map(i=>`<th>${D[i]}</th>`).join("")}</tr></thead><tbody>`;
+  for (const s of SECTIONS){
+    h += `<tr class="sec"><td colspan="${3+cols.length}"><span class="st">${s[2]}</span><span class="sn">lines ${s[0]}–${s[1]}${s[3] ? " · "+s[3] : ""}</span></td></tr>`;
+    for (let n=s[0]; n<=s[1]; n++){
+      const L = lines[n], ly = lyricFor(n);
+      const lyCell = ly ? esc(ly) : `<span class="ph">line ${n}</span>`;
+      let cells;
+      if (!L.start){
+        cells = (L.all && cols.length>1) ? `<td colspan="${cols.length}"><span class="ditto">〃</span></td>` : cols.map(()=>`<td><span class="ditto">〃</span></td>`).join("");
+      } else if (L.all && cols.length>1){
+        cells = `<td colspan="${cols.length}">${chip(L.text)} <span class="hint">all</span>${L.note?`<span class="note">${esc(L.note)}</span>`:""}</td>`;
+      } else {
+        cells = cols.map((i,k) => `<td>${chip(L.moves[i])}${L.note && k===0 ? `<span class="note">${esc(L.note)}</span>` : ""}</td>`).join("");
+      }
+      h += `<tr class="row${L.start?" start":""}${n===cur?" cur":""}" data-n="${n}"><td class="n">${n}</td><td class="cue">${L.start ? esc(L.cue) : `<span class="ditto">〃</span>`}</td><td class="ly">${lyCell}</td>${cells}</tr>`;
+    }
+  }
+  sheet.innerHTML = h + "</tbody>";
+}
+sheet.addEventListener("click", e => { const r = e.target.closest("tr.row"); if (r) go(+r.dataset.n, false); });
+
+/* stage */
+const $ = id => document.getElementById(id);
+function nextSwitch(n){ for (let k=n+1; k<=TOTAL; k++) if (lines[k].start) return k; return null; }
+function renderStage(){
+  const L = lines[cur], s = secOf(cur), ly = lyricFor(cur);
+  $("cue").textContent = "Cue: " + L.cue;
+  $("lnum").innerHTML = `${cur} <small>/ ${TOTAL}</small>`;
+  $("lsec").textContent = s[2] + (L.a!==L.b ? ` · move held lines ${L.a}–${L.b}` : "");
+  const lyEl = $("lyric");
+  if (ly){ lyEl.textContent = ly; lyEl.classList.remove("empty"); }
+  else { lyEl.textContent = lyrics.length ? `No lyric at this line. Check the offset.` : "Paste the lyrics below to see each line here."; lyEl.classList.add("empty"); }
+  $("cards").innerHTML = D.map((d,i)=>`<div class="card${d===me?" me":""}"><span class="who">${d}</span>${chip(L.moves[i])}</div>`).join("") ;
+  const ns = nextSwitch(cur);
+  if (ns){
+    const nm = lines[ns];
+    const tip = me ? `${me}: ${nm.moves[D.indexOf(me)]}` : (nm.all ? `all: ${nm.text}` : "moves split up");
+    $("nexthint").textContent = `Next change at line ${ns} (${tip})`;
+  } else $("nexthint").textContent = "Last move. Collapse with style.";
+  $("prev").disabled = cur<=1; $("next").disabled = cur>=TOTAL;
+  map.querySelectorAll("button").forEach((b,i)=>b.classList.toggle("on", SECTIONS[i]===s));
+}
+function go(n, scroll){
+  cur = Math.max(1, Math.min(TOTAL, n)); store.set("cur", cur);
+  sheet.querySelectorAll("tr.row.cur").forEach(r=>r.classList.remove("cur"));
+  const row = sheet.querySelector(`tr.row[data-n="${cur}"]`);
+  if (row){ row.classList.add("cur"); if (scroll) row.scrollIntoView({block:"nearest", behavior:"smooth"}); }
+  renderStage();
+}
+$("prev").onclick = () => go(cur-1, true);
+$("next").onclick = () => go(cur+1, true);
+$("jump").onclick = () => { const ns = nextSwitch(cur); if (ns) go(ns, true); };
+document.addEventListener("keydown", e => {
+  if (e.target.matches("textarea, input")) return;
+  if (e.key==="ArrowRight"){ e.preventDefault(); go(cur+1, true); }
+  else if (e.key==="ArrowLeft"){ e.preventDefault(); go(cur-1, true); }
+  else if (e.key==="s"||e.key==="S"){ const ns = nextSwitch(cur); if (ns) go(ns, true); }
+});
+
+/* lyrics loader */
+function renderStatus(){
+  const st = $("lstatus");
+  $("offv").textContent = offset>0 ? "+"+offset : String(offset);
+  if (!lyrics.length){ st.textContent = "No lyrics loaded yet"; return; }
+  const usable = lyrics.length - offset;
+  st.textContent = usable===TOTAL ? `${lyrics.length} lines loaded, matches all 82` :
+    `${lyrics.length} lines loaded${offset?` (offset ${offset})`:""}, plan expects 82. Nudge the offset or check for stray lines.`;
+}
+$("apply").onclick = () => {
+  const parsed = parseLyrics($("paste").value);
+  if (!parsed.length){ $("lstatus").textContent = "Nothing usable found. Paste the full lyrics block from Genius."; return; }
+  lyrics = parsed; offset = 0; store.set("lyrics", lyrics); store.set("offset", 0);
+  renderStatus(); renderSheet(); renderStage();
+};
+$("clear").onclick = () => { lyrics = []; offset = 0; $("paste").value = ""; store.set("lyrics", []); store.set("offset", 0); renderStatus(); renderSheet(); renderStage(); };
+$("offm").onclick = () => { offset--; store.set("offset", offset); renderStatus(); renderSheet(); renderStage(); };
+$("offp").onclick = () => { offset++; store.set("offset", offset); renderStatus(); renderSheet(); renderStage(); };
+if (lyrics.length) $("paste").value = lyrics.join("\n"); else $("loader").open = true;
+
+renderPicker(); renderSheet(); renderStatus(); go(cur, false);
+</script>
+
+</body>
+</html>
