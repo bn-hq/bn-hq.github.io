@@ -12,7 +12,7 @@
 :root{
   --bg:#fbf6f3; --surface:#ffffff; --sunk:#f5ece8; --ink:#1f1418; --muted:#7d6872; --line:#ecdfe4;
   --accent:#cf1259; --accent-ink:#ffffff; --accent-soft:#fde3ed;
-  --m-ST:#e0457b; --m-SQUAT:#c2185b; --m-SIDE:#ec6aa0; --m-POP:#e53950; --m-WIND:#d63384; --m-JIGGLE:#f0748f; --m-KNEE:#f59e0b; --m-BACKUP:#a855f7; --m-HYPE:#3b82f6; --m-WALK:#0891b2; --m-JUMP:#6366f1; --m-STAND:#94a3b8; --m-STEP:#0891b2; --m-ROLL:#6366f1; --m-SHIMMY:#65a30d; --m-FT:#ee7424; --m-WT:#8b5cf6; --m-BRACE:#64748b; --m-BASE:#0e9f9a;
+  --m-ST:#e0457b; --m-SQUAT:#c2185b; --m-SIDE:#ec6aa0; --m-POP:#e53950; --m-WIND:#d63384; --m-JIGGLE:#f0748f; --m-KNEE:#f59e0b; --m-BACKUP:#a855f7; --m-HYPE:#3b82f6; --m-WALK:#0891b2; --m-HOVER:#6366f1; --m-SLAP:#f97316; --m-CATCH:#0369a1; --m-STAND:#94a3b8; --m-STEP:#0891b2; --m-ROLL:#6366f1; --m-SHIMMY:#65a30d; --m-FT:#ee7424; --m-WT:#8b5cf6; --m-BRACE:#64748b; --m-BASE:#0e9f9a;
   --m-OVER:#c026d3; --m-DROP:#c99712; --m-STRUT:#2563eb; --m-SOLO:#16a34a; --m-FREEZE:#94a3b8; --m-POSE:#b45309; --m-MOP:#db2777;
   --m-BACK:#a3a3a3; --m-GONE:transparent;
   --display:"Bowlby One","Arial Black",Impact,sans-serif;
@@ -180,7 +180,8 @@ ul.tips{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;fo
     <section class="panel">
       <h2>Running it live</h2>
       <ul class="tips">
-        <li>Two jobs only: shake it, or do nothing (walk, jump, hype, stand). Nobody has to actually dance.</li>
+        <li>Two jobs only: shake it, or do nothing (walk, hover, slap, catch, hype, stand). Nobody has to actually dance.</li>
+        <li>Check the slaps and catches with each other at practice so nobody's surprised on stage.</li>
         <li>Hooks are unison, everyone shaking. In the verses watch your own column.</li>
         <li>On HYPE? Sell it. You're the crowd, and it makes whoever's twerking look ten times better.</li>
         <li>Lost? ST until the next switch.</li>
@@ -221,14 +222,14 @@ const PLAN = [
   [8,8,"some WAP","SQUAT"],
   [9,9,"bucket and a mop","SIDE"],
   [10,10,"everything you got","POP"],
-  [11,12,"catch a charge / extra large",["ST center","WALK around Savi","SIDE","SIDE","JUMP next to Savi"]],
-  [13,14,"in your face / credit card",["HYPE","ST, back to crowd","STAND","ST, back to crowd","WALK"]],
-  [15,16,"hop on top / kegel",["OVER Ali","JUMP next to Ali","BASE","HYPE","STAND, arms crossed"]],
+  [11,12,"catch a charge / extra large",["ST center","SLAP Savi on the beat","SIDE","SIDE","HYPE"]],
+  [13,14,"in your face / credit card",["CATCH, Tim throws it on you","WT on Savi","SLAP Tim","WT on Jishnuu","CATCH, Aryaman throws it on you"]],
+  [15,16,"hop on top / kegel",["OVER Ali","SLAP Savi","BASE","HYPE","STAND, arms crossed"]],
   [17,17,"look in my eyes","get up, POP"],
-  [18,19,"take a dive / tie me up","FT"],
+  [18,19,"take a dive / tie me up",["FT","HOVER over Savi","FT","HOVER over Ali","FT"]],
   [20,20,"wear a disguise",["SQUAT","SQUAT","HYPE","SQUAT","WALK"]],
-  [21,22,"Mack truck, garage / scream",["WT on Tim","BRACE","WT on Aryaman","BRACE","JUMP, beep beep"]],
-  [23,24,"make a scene / don't clean",["SIDE","SIDE","WALK across the front","SIDE","SIDE"]],
+  [21,22,"Mack truck, garage / scream",["WT on Tim","BRACE","WT on Aryaman","BRACE","HYPE, beep beep"]],
+  [23,24,"make a scene / don't clean",["SIDE","SIDE","WALK across the front, SLAP each one","SIDE","SIDE"]],
   [25,25,"got this ring (ayy, ayy)","POP on each ayy, FREEZE"],
   [26,27,"drip down the side / jump out","WT on the wall"],
   [28,28,"where to put it",["SOLO","HYPE the soloist","HYPE the soloist","HYPE the soloist","HYPE the soloist"]],
@@ -240,24 +241,24 @@ const PLAN = [
   [34,35,"boots and coat / click click",["WALK","OVER","HYPE, hand-camera photos","BASE","OVER"]],
   [36,36,"mwah, mwah, mwah","POP on each mwah"],
   [37,37,"make it rain",["HYPE, throw money","SQUAT","HYPE, throw money","SQUAT","SQUAT"]],
-  [38,39,"hard hitter / weed smoker","FT in a line"],
+  [38,39,"hard hitter / weed smoker",["FT","FT","FT","FT","WALK the line, SLAP each one"],"floor twerkers in a line"],
   [40,41,"king cobra / lean over",["pop up 1st","pop up 2nd","pop up 3rd","pop up 4th","pop up 5th"],"canon, each pops up into ST"],
   [42,43,"where I'm headed / credit","SIDE, all facing the same way"],
-  [44,45,"got a beard / diabetic",["BASE","JUMP next to Savi","OVER Savi","WALK","STAND"]],
-  [46,47,"spit / gulp lines",["ST","STAND","ST","STAND","ST"]],
+  [44,45,"got a beard / diabetic",["BASE","SLAP Ali","OVER Savi","HYPE","STAND"]],
+  [46,47,"spit / gulp lines",["ST","SLAP Savi","ST","SLAP Ali","ST"]],
   [48,48,"back of my throat","ST, back to crowd"],
-  [49,50,"head game / soggy",["WT on Ali","WT on Ali","BRACE","HYPE","JUMP"]],
+  [49,50,"head game / soggy",["WT on Ali","WT on Ali","BRACE","SLAP Savi","SLAP Tim"]],
   [51,51,"cops is behind me",["FT double speed","FT double speed","FT double speed","HYPE, siren hands","HYPE, siren hands"]],
   [52,52,"tryna sign me, woo","get up, POP on woo"],
-  [53,54,"your honor / switch my wig",["ST","WALK the circle","ST","WALK the circle","ST"],"circle, twerkers facing out"],
+  [53,54,"your honor / switch my wig",["ST","WALK the circle, SLAP as you pass","ST","WALK the circle, SLAP as you pass","ST"],"circle, twerkers facing out"],
   [55,56,"on his knees / beatin'","SQUAT"],
-  [57,58,"food chain / bottom-feeder",["OVER","BASE center","OVER","JUMP next to Tim","JUMP next to Tim"]],
-  [59,60,"big demeanor / meet ya",["FT","FT","FT","WALK","WALK"]],
+  [57,58,"food chain / bottom-feeder",["OVER","BASE center","OVER","HYPE","STAND"]],
+  [59,60,"big demeanor / meet ya",["FT","FT","FT","HOVER over Ali","HOVER over Tim"]],
   [61,62,"can't bang / I like pain",["WT train","WT train","WT train","WT train","BRACE, front of train"]],
   [63,63,"whose is it?","ST"],
   [64,64,"spell my name","ST, FREEZE on ah"],
   [65,65,"yeah x3","ST"],
-  [66,67,"some WAP / bucket and a mop",["OVER","OVER","JUMP","JUMP","BASE center"]],
+  [66,67,"some WAP / bucket and a mop",["OVER","OVER","SLAP Savi","SLAP Tim","BASE center"]],
   [68,68,"everything you got","get up, SQUAT"],
   [69,69,"from the top, make it drop","POP"],
   [70,70,"bucket and a mop","ST"],
@@ -285,7 +286,9 @@ const LEGEND = [
   ]],
   ["Doing nothing (no dancing)", [
     ["WALK","calm walk around the twerkers, like you're browsing"],
-    ["JUMP","jump in place next to a twerker like a hype man"],
+    ["HOVER","stand over a floor twerker, one foot on each side, and bounce. Never on him"],
+    ["SLAP","slap the twerker's ass on the beat. Keep it light"],
+    ["CATCH","stand still and let someone throw it on you. React big: shocked face, hands up"],
     ["HYPE","point, fan yourself, throw money, lose your mind"],
     ["STAND","just stand there unbothered, arms crossed, nodding"],
     ["BRACE","be the wall: hands on knees, hold still so someone can twerk on you"],
@@ -303,7 +306,7 @@ const secOf = n => SECTIONS.find(s => n>=s[0] && n<=s[1]);
 function code(t){
   if (/^gone$/i.test(t)) return "GONE";
   if (/back turned/i.test(t)) return "BACK";
-  const m = t.match(/\b(WALK|JUMP|STAND|HYPE|SQUAT|SIDE|POP|ST|FT|WT|BRACE|BASE|OVER|SOLO|FREEZE)\b/);
+  const m = t.match(/\b(WALK|HOVER|SLAP|CATCH|STAND|HYPE|SQUAT|SIDE|POP|ST|FT|WT|BRACE|BASE|OVER|SOLO|FREEZE)\b/);
   if (m) return m[1];
   if (/pop up/i.test(t)) return "ST";
   return "FREEZE";
