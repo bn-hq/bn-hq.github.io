@@ -302,10 +302,10 @@ const PLAN = [
 ];
 const LEGEND = [
   ["Shaking it", [
-    ["ST","standing twerk: hands on knees, bounce"],
+    ["ST","standing twerk: hands on knees, twerk nonstop"],
     ["SQUAT","low twerk: sit deeper, smaller and faster bounce"],
     ["SIDE","side twerk: turn your side to the crowd so they see it in profile"],
-    ["POP","booty pop: one sharp hit per beat, stick it out and hold"],
+    ["POP","one twerk: a single twerk on the beat, then hold"],
     ["FT","floor twerk: all fours, bounce"],
     ["SOLO","your own freestyle, shake it however you want"]
   ]],
@@ -345,10 +345,10 @@ const esc = s => s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'
 const chip = t => { const c = code(t); return `<button type="button" class="mv${c==="GONE"?" gone":""}" data-code="${c}" style="--m:var(--m-${c})">${esc(t)}</button>`; };
 
 const HOW = {
-  ST: ["Standing twerk", "Feet wider than your shoulders, bend your knees, hands on your knees. Bounce your butt up and down to the beat. That's the whole move."],
+  ST: ["Standing twerk (nonstop)", "Feet wider than your shoulders, bend your knees, hands on your knees, and twerk nonstop to the beat. Don't stop till the next switch."],
   SQUAT: ["Low twerk", "Same as a standing twerk, but sit lower like you're about to sit in a chair. Smaller, faster bounces."],
   SIDE: ["Side twerk", "Turn sideways so your shoulder points at the crowd, then do a regular standing twerk. The crowd sees it from the side."],
-  POP: ["Booty pop", "Push your butt out hard on one beat, then freeze. Next beat, pop it again. Sharp and slow, not a bounce."],
+  POP: ["One twerk", "Same stance as ST, but just one twerk on the beat, then hold still. Next beat, one more. One twerk, hold, one twerk, hold."],
   FT: ["Floor twerk", "Get on your hands and knees and bounce your butt up and down."],
   SOLO: ["Solo", "Your moment. Get out front and shake it however you want while everyone hypes you. Dumber is better."],
   WT: ["Wall twerk", "Put your hands on the wall, or on the back of whoever is bracing, lean in, and twerk."],
