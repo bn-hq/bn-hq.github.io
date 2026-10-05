@@ -80,6 +80,19 @@ button.mv{border:0;cursor:pointer;text-align:left}
 button.mv:hover{background:color-mix(in oklab,var(--m) 34%,transparent)}
 button.mv.on{box-shadow:inset 0 0 0 2px var(--m)}
 
+/* rules */
+.rules{background:var(--accent-soft);border-radius:14px;padding:16px 18px;display:flex;flex-direction:column;gap:8px}
+.rules ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;font-size:15px;max-width:70ch}
+.rules b{font-weight:700}
+
+/* cheat sheet */
+.cheat{display:flex;flex-direction:column;gap:6px}
+.cs-row{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;padding:6px 0;border-bottom:1px solid var(--line)}
+.cs-sec{font-weight:700;font-size:14px;min-width:11em}
+.cs-sec small{font-family:var(--mono);font-weight:500;color:var(--muted);font-size:11px;margin-left:4px}
+.cs-seq{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.cs-seq .arr{color:var(--muted);font-size:12px}
+
 /* move key */
 .key{display:flex;flex-direction:column;gap:8px}
 .key-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
@@ -143,8 +156,19 @@ ul.tips{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;fo
   <header>
     <div class="label">Pledge task · Cardi B feat. Megan Thee Stallion</div>
     <h1>WAP <em>Pledge</em> Choreo</h1>
-    <p class="sub">5 dancers, 82 lyric lines, about 4 minutes. Goal is not awesome, just not awful. Two jobs: shake it, or do nothing around whoever is. No real dancing needed. Everyone lip-syncs every line. Paste the lyrics below to get them next to every move. Pick yourself below, then step through or scan the full sheet.</p>
+    <p class="sub">5 dancers, 82 lyric lines, about 4 minutes. Goal is not awesome, just not awful. Learn the 5 rules and you know the whole routine. Tap your name for your own cheat sheet. Everyone lip-syncs every line.</p>
   </header>
+
+  <section class="rules" aria-label="The whole routine in 5 rules">
+    <h2>The whole thing in 5 rules</h2>
+    <ol>
+      <li><b>Name order runs everything:</b> Savi, Tim, Ali, Aryaman, Jishnuu. You turn around, get piled on, solo, and leave in that order. Jishnuu always goes last and suffers the most.</li>
+      <li><b>Hooks:</b> everyone twerks nonstop. No thoughts, just cake.</li>
+      <li><b>Every verse:</b> twerk, then <b>pile</b>, then <b>wall</b>. Cardi verses start on the floor, Megan verses start standing. Megan's first verse does solos instead of the wall.</li>
+      <li><b>Pile:</b> your turn = BASE, the next name climbs OVER you, everyone else is a menace around the pile.</li>
+      <li><b>Every section ends in a FREEZE,</b> and the lyric tells you the pose: flash the ring, make it rain, stir the macaroni.</li>
+    </ol>
+  </section>
 
   <nav class="map" id="map" aria-label="Song map"></nav>
 
@@ -153,6 +177,11 @@ ul.tips{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;fo
   <section class="key" aria-label="Move key">
     <div class="label">Moves · tap any move, here or in the sheet, to see how to do it</div>
     <div id="key"></div>
+  </section>
+
+  <section class="cheat" aria-label="Your cheat sheet">
+    <div class="label" id="cheat-title">Your cheat sheet</div>
+    <div id="cheat"></div>
   </section>
 
   <section class="stage" aria-label="Rehearse">
@@ -202,9 +231,9 @@ ul.tips{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;fo
     <section class="panel">
       <h2>Running it live</h2>
       <ul class="tips">
-        <li>Two jobs only: shake it, or do nothing (walk, hover, slap, catch, hype, stand). Nobody has to actually dance.</li>
-        <li>Check the slaps and catches with each other at practice so nobody's surprised on stage.</li>
-        <li>Hooks are unison, everyone shaking. In the verses watch your own column.</li>
+        <li>Two jobs only: shake it, or mess around whoever is. Nobody has to actually dance.</li>
+        <li>Check any slapping with each other at practice so nobody's surprised on stage.</li>
+        <li>Hooks and piles are your landmarks. If you get lost, find the next one.</li>
         <li>On HYPE? Sell it. You're the crowd, and it makes whoever's twerking look ten times better.</li>
         <li>Lost? ST until the next switch.</li>
         <li>Everyone lip-syncs every line, the whole song, Cardi and Megan parts alike. Sell it with your face.</li>
@@ -245,83 +274,55 @@ const PLAN = [
   [1,1,"chant #1",["turn, POP","back turned","back turned","back turned","back turned"]],
   [2,2,"chant #2",["POP","turn, POP","back turned","back turned","back turned"]],
   [3,3,"chant #3",["POP","POP","turn, POP","back turned","back turned"]],
-  [4,4,"chant #4 (hol' up)",["POP","POP","POP","turn, POP","turn last, ALL FREEZE on hol' up"]],
-  [5,5,"seven days a week","WALK into a V"],
-  [6,6,"pullout game weak, woo","POP"],
-  [7,7,"yeah x4","ST"],
-  [8,8,"some WAP","SQUAT"],
-  [9,9,"bucket and a mop","SIDE"],
-  [10,10,"everything you got","POP"],
-  [11,12,"catch a charge / extra large",["ST center","SLAP Savi on the beat","SIDE","SIDE","HYPE"]],
-  [13,14,"in your face / credit card",["CATCH, Tim throws it on you","WT on Savi","SLAP Tim","WT on Jishnuu","CATCH, Aryaman throws it on you"]],
-  [15,16,"hop on top / kegel",["OVER Ali","SLAP Savi","BASE","HYPE","STAND, arms crossed"]],
-  [17,17,"look in my eyes","get up, POP"],
-  [18,19,"take a dive / tie me up",["FT","HOVER over Savi","FT","HOVER over Ali","FT"]],
-  [20,20,"wear a disguise",["SQUAT","SQUAT","HYPE","SQUAT","WALK"]],
-  [21,22,"Mack truck, garage / scream",["WT on Tim","BRACE","WT on Aryaman","BRACE","HYPE, beep beep"]],
-  [23,24,"make a scene / don't clean",["SIDE","SIDE","WALK across the front, SLAP each one","SIDE","SIDE"]],
-  [25,25,"got this ring (ayy, ayy)","POP on each ayy, FREEZE"],
-  [26,27,"drip down the side / jump out","WT on the wall"],
-  [28,28,"where to put it",["SOLO","HYPE the soloist","HYPE the soloist","HYPE the soloist","HYPE the soloist"]],
-  [29,29,"pow, pow, pow",["HYPE the soloist","SOLO","HYPE the soloist","HYPE the soloist","HYPE the soloist"]],
-  [30,30,"bite your lip",["HYPE the soloist","HYPE the soloist","SOLO","HYPE the soloist","HYPE the soloist"]],
-  [31,31,"ask for a car",["HYPE the soloist","HYPE the soloist","HYPE the soloist","SOLO","HYPE the soloist"]],
-  [32,32,"for a thang",["HYPE the soloist","HYPE the soloist","HYPE the soloist","HYPE the soloist","SOLO"]],
-  [33,33,"made his mind up","turn, POP"],
-  [34,35,"boots and coat / click click",["WALK","OVER","HYPE, hand-camera photos","BASE","OVER"]],
-  [36,36,"mwah, mwah, mwah","POP on each mwah"],
-  [37,37,"make it rain",["HYPE, throw money","SQUAT","HYPE, throw money","SQUAT","SQUAT"]],
-  [38,39,"hard hitter / weed smoker",["FT","FT","FT","FT","WALK the line, SLAP each one"],"floor twerkers in a line"],
-  [40,41,"king cobra / lean over",["pop up 1st","pop up 2nd","pop up 3rd","pop up 4th","pop up 5th"],"canon, each pops up into ST"],
-  [42,43,"where I'm headed / credit","SIDE, all facing the same way"],
-  [44,45,"got a beard / diabetic",["BASE","SLAP Ali","OVER Savi","HYPE","STAND"]],
-  [46,47,"spit / gulp lines",["ST","SLAP Savi","ST","SLAP Ali","ST"]],
-  [48,48,"back of my throat","ST, back to crowd"],
-  [49,50,"head game / soggy",["WT on Ali","WT on Ali","BRACE","SLAP Savi","SLAP Tim"]],
-  [51,51,"cops is behind me",["FT double speed","FT double speed","FT double speed","HYPE, siren hands","HYPE, siren hands"]],
-  [52,52,"tryna sign me, woo","get up, POP on woo"],
-  [53,54,"your honor / switch my wig",["ST","WALK the circle, SLAP as you pass","ST","WALK the circle, SLAP as you pass","ST"],"circle, twerkers facing out"],
-  [55,56,"on his knees / beatin'","SQUAT"],
-  [57,58,"food chain / bottom-feeder",["OVER","BASE center","OVER","HYPE","STAND"]],
-  [59,60,"big demeanor / meet ya",["FT","FT","FT","HOVER over Ali","HOVER over Tim"]],
-  [61,62,"can't bang / I like pain",["WT train","WT train","WT train","WT train","BRACE, front of train"]],
-  [63,63,"whose is it?","ST"],
-  [64,64,"spell my name","ST, FREEZE on ah"],
-  [65,65,"yeah x3","ST"],
-  [66,67,"some WAP / bucket and a mop",["OVER","OVER","SLAP Savi","SLAP Tim","BASE center"]],
-  [68,68,"everything you got","get up, SQUAT"],
-  [69,69,"from the top, make it drop","POP"],
-  [70,70,"bucket and a mop","ST"],
-  [71,71,"wap, wap, wap","POP x3"],
-  [72,72,"macaroni in a pot, huh","FREEZE on huh"],
-  [73,74,"chant",["WALK off","ST","SIDE","ST","SIDE"]],
-  [75,76,"chant",["gone","WALK off","SIDE","ST","SIDE"]],
-  [77,78,"chant",["gone","gone","WALK off","SQUAT","SQUAT"]],
-  [79,80,"chant",["gone","gone","gone","WALK off","SQUAT"]],
+  [4,4,"chant #4 (hol' up)",["POP","POP","POP","turn, POP","turn, ALL FREEZE on hol' up"]],
+  [5,6,"seven days a week","WALK into a line like you own the place"],
+  [7,9,"yeah / some WAP / bucket and a mop","ST"],
+  [10,10,"everything you got","FREEZE, hand out like pay up"],
+  [11,14,"catch a charge","FT"],
+  [15,19,"hop on top (pile 1)",["BASE","OVER Savi","HYPE, mess around the pile","HYPE, mess around the pile","HYPE, mess around the pile"]],
+  [20,24,"wear a disguise","WT on the wall"],
+  [25,25,"got this ring (ayy, ayy)","FREEZE, flash the ring"],
+  [26,27,"drip down the side","ST"],
+  [28,31,"where to put it (pile 2)",["HYPE, mess around the pile","BASE","OVER Tim","HYPE, mess around the pile","HYPE, mess around the pile"]],
+  [32,32,"for a thang",["SOLO","HYPE the soloist","HYPE the soloist","HYPE the soloist","HYPE the soloist"]],
+  [33,33,"made his mind up",["HYPE the soloist","SOLO","HYPE the soloist","HYPE the soloist","HYPE the soloist"]],
+  [34,34,"boots and your coat",["HYPE the soloist","HYPE the soloist","SOLO","HYPE the soloist","HYPE the soloist"]],
+  [35,35,"click, click, click",["HYPE the soloist","HYPE the soloist","HYPE the soloist","SOLO","HYPE the soloist"]],
+  [36,36,"mwah, mwah, mwah",["HYPE the soloist","HYPE the soloist","HYPE the soloist","HYPE the soloist","SOLO"]],
+  [37,37,"make it rain","FREEZE mid money throw"],
+  [38,42,"hard hitter","FT"],
+  [43,47,"just like his credit (pile 3)",["HYPE, mess around the pile","HYPE, mess around the pile","BASE","OVER Ali","HYPE, mess around the pile"]],
+  [48,51,"back of my throat","WT on the wall"],
+  [52,52,"tryna sign me, woo","FREEZE holding a fake mic"],
+  [53,56,"your honor","ST"],
+  [57,60,"food chain (pile 4)",["HYPE, mess around the pile","HYPE, mess around the pile","HYPE, mess around the pile","BASE","OVER Aryaman"]],
+  [61,63,"can't bang","WT on the wall"],
+  [64,64,"spell my name","FREEZE, point at yourself"],
+  [65,66,"yeah / some WAP","ST"],
+  [67,70,"bucket and a mop (pile 5)",["OVER Jishnuu","HYPE, mess around the pile","HYPE, mess around the pile","HYPE, mess around the pile","BASE"]],
+  [71,71,"wap, wap, wap","ST"],
+  [72,72,"macaroni in a pot, huh","FREEZE stirring a pot on huh"],
+  [73,74,"chant",["WALK off like nothing happened","ST","ST","ST","ST"]],
+  [75,76,"chant",["gone","WALK off like nothing happened","ST","ST","ST"]],
+  [77,78,"chant",["gone","gone","WALK off like nothing happened","ST","ST"]],
+  [79,80,"chant",["gone","gone","gone","WALK off like nothing happened","ST"]],
   [81,82,"chant",["gone","gone","gone","gone","FT alone, COLLAPSE on last line"]]
 ];
 const LEGEND = [
   ["Shaking it", [
     ["ST","standing twerk: hands on knees, twerk nonstop"],
-    ["SQUAT","low twerk: sit deeper, smaller and faster bounce"],
-    ["SIDE","side twerk: turn your side to the crowd so they see it in profile"],
     ["POP","one twerk: a single twerk on the beat, then hold"],
-    ["FT","floor twerk: all fours, bounce"],
-    ["SOLO","your own freestyle, shake it however you want"]
+    ["FT","floor twerk: all fours, twerk"],
+    ["WT","wall twerk: hands on the wall, lean in, twerk"],
+    ["SOLO","your turn out front: shake it however you want"]
   ]],
-  ["Shaking it with a partner", [
-    ["WT","twerk against the wall or a bracing guy"],
-    ["OVER","straddle the BASE guy and twerk (don't actually stand on him)"],
-    ["BASE","lie on your back, bridge and bounce hips"]
+  ["The pile", [
+    ["BASE","lie on your back, knees up, bounce your hips"],
+    ["OVER","stand over the BASE guy, one foot each side, and twerk. Don't sit on him"]
   ]],
-  ["Doing nothing (no dancing)", [
-    ["WALK","calm walk around the twerkers, like you're browsing"],
-    ["HOVER","stand over a floor twerker, one foot on each side, and bounce. Never on him"],
-    ["SLAP","slap the twerker's ass on the beat. Keep it light"],
-    ["CATCH","stand still and let someone throw it on you. React big: shocked face, hands up"],
-    ["HYPE","point, fan yourself, throw money, lose your mind"],
-    ["STAND","just stand there unbothered, arms crossed, nodding"],
-    ["BRACE","be the wall: hands on knees, hold still so someone can twerk on you"],
+  ["Not dancing", [
+    ["HYPE","mess around whoever's twerking: hype, slap, walk circles, throw money"],
+    ["WALK","just walk, chill"],
     ["FREEZE","hold a pose"]
   ]]
 ];
@@ -351,14 +352,14 @@ const HOW = {
   POP: ["One twerk", "Same stance as ST, but just one twerk on the beat, then hold still. Next beat, one more. One twerk, hold, one twerk, hold."],
   FT: ["Floor twerk", "Get on your hands and knees and bounce your butt up and down."],
   SOLO: ["Solo", "Your moment. Get out front and shake it however you want while everyone hypes you. Dumber is better."],
-  WT: ["Wall twerk", "Put your hands on the wall, or on the back of whoever is bracing, lean in, and twerk."],
+  WT: ["Wall twerk", "Everyone faces the wall. Hands on the wall, lean in, and twerk."],
   OVER: ["Over", "The BASE guy is on his back. Stand with one foot on each side of his hips, squat a little, and twerk over him. Don't sit or stand on him."],
   BASE: ["Base", "Lie on your back, knees bent, feet flat on the floor. Lift your hips and bounce them. The OVER guys twerk above you."],
-  WALK: ["Walk", "Walk around the twerkers, slow and chill, like you're browsing a store. No dancing at all."],
+  WALK: ["Walk", "Just walk, slow and chill, like you're browsing a store. No dancing at all."],
   HOVER: ["Hover", "Someone is floor twerking. Stand over him with one foot on each side and bounce or jump in place. Never step on him."],
   SLAP: ["Slap", "Walk up and slap the twerker's butt on the beat. Light, for the bit, not a real hit."],
   CATCH: ["Catch", "Stand still while someone twerks on you. React big: shocked face, hands up, look at the crowd."],
-  HYPE: ["Hype", "Be the crowd. Point at whoever's twerking, fan yourself, throw fake money, yell. No dancing."],
+  HYPE: ["Hype", "Not twerking, so mess around whoever is. Point, yell, fan yourself, throw fake money, slap a butt, walk circles around the pile, hover over it. Anything but dancing."],
   STAND: ["Stand", "Just stand there. Arms crossed, nod slowly like you've seen better."],
   BRACE: ["Brace", "Bend over with your hands on your knees and stay still and solid, so someone can twerk on you."],
   FREEZE: ["Freeze", "Stop and hold a pose, any pose. Don't move until the next switch."],
@@ -412,7 +413,7 @@ picker.innerHTML = `<span class="label" style="margin-right:4px">Focus</span>` +
 picker.addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
   me = b.dataset.d === "Everyone" ? null : b.dataset.d;
-  store.set("me", me); renderPicker(); renderSheet(); renderStage();
+  store.set("me", me); renderPicker(); renderSheet(); renderStage(); renderCheat();
 });
 function renderPicker(){
   picker.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String((b.dataset.d==="Everyone" && !me) || b.dataset.d===me)));
@@ -420,6 +421,18 @@ function renderPicker(){
 
 /* legend */
 document.getElementById("legend").innerHTML = LEGEND.map(([g,items]) => `<span class="label lg-h">${g}</span>` + items.map(([c,d]) => `${chip(c)}<span>${esc(d)}</span>`).join("")).join("");
+function renderCheat(){
+  const el = document.getElementById("cheat");
+  document.getElementById("cheat-title").textContent = me ? `${me}'s cheat sheet` : "Your cheat sheet";
+  if (!me){ el.innerHTML = `<p class="hint">Tap your name above to get your whole routine on one screen.</p>`; return; }
+  const i = D.indexOf(me);
+  el.innerHTML = SECTIONS.map(sec => {
+    const seq = [];
+    for (let n = sec[0]; n <= sec[1]; n++){ const c = code(lines[n].moves[i]); if (seq[seq.length-1] !== c) seq.push(c); }
+    const label = c => c === "BACK" ? "back turned" : c === "GONE" ? "gone" : c;
+    return `<div class="cs-row"><span class="cs-sec">${sec[2]}<small>${sec[0]}–${sec[1]}</small></span><span class="cs-seq">${seq.map(c => chip(label(c))).join('<span class="arr">→</span>')}</span></div>`;
+  }).join("");
+}
 document.getElementById("key").innerHTML = LEGEND.map(([g,items]) => `<div class="key-row"><span class="label">${g}</span>${items.map(([c]) => chip(c)).join("")}</div>`).join("");
 
 /* tap a move to see how to do it */
@@ -532,7 +545,7 @@ $("offm").onclick = () => { offset--; store.set("offset", offset); renderStatus(
 $("offp").onclick = () => { offset++; store.set("offset", offset); renderStatus(); renderSheet(); renderStage(); };
 if (lyrics.length) $("paste").value = lyrics.join("\n"); else $("loader").open = true;
 
-renderPicker(); renderSheet(); renderStatus(); go(cur, false);
+renderPicker(); renderSheet(); renderStatus(); renderCheat(); go(cur, false);
 </script>
 
 </body>
