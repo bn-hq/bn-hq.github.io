@@ -93,10 +93,10 @@ table.focus{min-width:0}
 th,td{padding:7px 10px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
 thead th{position:sticky;top:0;background:var(--surface);font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);z-index:1}
 td.n{font-family:var(--mono);font-size:12px;color:var(--muted);width:40px;font-variant-numeric:tabular-nums}
-td.ly{font-size:14px;max-width:280px;min-width:160px}
+td.ly{font-size:14px;font-weight:700;max-width:280px;min-width:160px}
 td.cue{font-size:13px;font-weight:700;color:var(--accent);min-width:120px;max-width:170px}
 .cueline{font-size:14px;font-weight:700;color:var(--accent)}
-td.ly .ph{color:var(--muted);opacity:.6;font-size:12px}
+td.ly .ph{color:var(--muted);opacity:.6;font-size:12px;font-weight:500}
 tr.sec td{background:var(--sunk);padding:10px}
 tr.sec .st{font-family:var(--display);font-size:15px}
 tr.sec .sn{color:var(--muted);font-size:13px;margin-left:8px}
@@ -105,7 +105,7 @@ tr.row:hover td{background:color-mix(in oklab,var(--accent) 5%,transparent)}
 tr.row.cur td{background:var(--accent-soft)}
 tr.row.cur td.n{color:var(--accent);font-weight:700}
 tr.start td{border-top:2px solid var(--line)}
-td .ditto{color:var(--muted);opacity:.45;font-size:14px}
+td .ditto{color:var(--muted);font-size:12px;font-style:italic;font-weight:500}
 th.me,td.me{background:color-mix(in oklab,var(--accent) 7%,transparent)}
 .note{display:block;color:var(--muted);font-size:12px;margin-top:3px;font-style:italic}
 
@@ -126,7 +126,7 @@ ul.tips{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;fo
   <header>
     <div class="label">Pledge task · Cardi B feat. Megan Thee Stallion</div>
     <h1>WAP <em>Pledge</em> Choreo</h1>
-    <p class="sub">5 dancers, 82 lyric lines, about 4 minutes. Goal is not awesome, just not awful. Two jobs: shake it, or do nothing around whoever is. No real dancing needed. The cue words tell you when to switch. Pick yourself below, then step through or scan the full sheet.</p>
+    <p class="sub">5 dancers, 82 lyric lines, about 4 minutes. Goal is not awesome, just not awful. Two jobs: shake it, or do nothing around whoever is. No real dancing needed. Everyone lip-syncs every line. Paste the lyrics below to get them next to every move. Pick yourself below, then step through or scan the full sheet.</p>
   </header>
 
   <nav class="map" id="map" aria-label="Song map"></nav>
@@ -185,6 +185,7 @@ ul.tips{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;fo
         <li>Hooks are unison, everyone shaking. In the verses watch your own column.</li>
         <li>On HYPE? Sell it. You're the crowd, and it makes whoever's twerking look ten times better.</li>
         <li>Lost? ST until the next switch.</li>
+        <li>Everyone lip-syncs every line, the whole song, Cardi and Megan parts alike. Sell it with your face.</li>
         <li>Everyone is BASE at least once, and everyone gets a solo.</li>
         <li>Lost? Twerk till the next hook. Hooks are the reset point.</li>
         <li>Savi calls switches if timing drifts.</li>
@@ -383,13 +384,13 @@ function renderSheet(){
       const lyCell = ly ? esc(ly) : `<span class="ph">line ${n}</span>`;
       let cells;
       if (!L.start){
-        cells = (L.all && cols.length>1) ? `<td colspan="${cols.length}"><span class="ditto">〃</span></td>` : cols.map(()=>`<td><span class="ditto">〃</span></td>`).join("");
+        cells = (L.all && cols.length>1) ? `<td colspan="${cols.length}"><span class="ditto">continued</span></td>` : cols.map(()=>`<td><span class="ditto">continued</span></td>`).join("");
       } else if (L.all && cols.length>1){
         cells = `<td colspan="${cols.length}">${chip(L.text)} <span class="hint">all</span>${L.note?`<span class="note">${esc(L.note)}</span>`:""}</td>`;
       } else {
         cells = cols.map((i,k) => `<td>${chip(L.moves[i])}${L.note && k===0 ? `<span class="note">${esc(L.note)}</span>` : ""}</td>`).join("");
       }
-      h += `<tr class="row${L.start?" start":""}${n===cur?" cur":""}" data-n="${n}"><td class="n">${n}</td><td class="cue">${L.start ? esc(L.cue) : `<span class="ditto">〃</span>`}</td><td class="ly">${lyCell}</td>${cells}</tr>`;
+      h += `<tr class="row${L.start?" start":""}${n===cur?" cur":""}" data-n="${n}"><td class="n">${n}</td><td class="cue">${L.start ? esc(L.cue) : `<span class="ditto">continued</span>`}</td><td class="ly">${lyCell}</td>${cells}</tr>`;
     }
   }
   sheet.innerHTML = h + "</tbody>";
