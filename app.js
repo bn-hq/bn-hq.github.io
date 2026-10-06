@@ -521,20 +521,20 @@ function myMilestonesHtml(){
 // ---------- accountability ----------
 const acctEl=document.getElementById('acct');
 let rankWeek=0;
-function weekPoints(n, ws){
-  // points for the week starting ws (Monday), from timestamps already stored
-  const we=addDays(ws,6), inWk=ts=>{ if(!ts) return false; const d=isoDay(ts); return d>=ws&&d<=we; };
+function weekPoints(n, P){
+  // points for one meeting-to-meeting period, from timestamps already stored
+  const inWk=ts=>{ if(!ts) return false; const t=Date.parse(ts); return t>P.start&&t<=P.end; };
   const tasks=S.tasks.filter(t=>inWk((t.done||{})[n])).length;
   const perfect=S.recitals.filter(r=>r.who===n&&String(r.passage).startsWith('roll:')&&r.pct===100&&inWk(r.at)).length;
   const faces=Object.values(S.drill[n]||{}).filter(x=>x.last==='ok'&&(x.streak||0)>=2&&inWk(x.at)).length;
   return {n, tasks, perfect, faces, pts:tasks+perfect+faces};
 }
 function rankHtml(){
-  const ws=addDays(weekStart(today()),-7*rankWeek), rows=PC().map(n=>weekPoints(n,ws)).sort((a,b)=>b.pts-a.pts||a.n.localeCompare(b.n));
+  const cur=periodAt(), P=rankWeek?prevPeriod(cur):cur, rows=PC().map(n=>weekPoints(n,P)).sort((a,b)=>b.pts-a.pts||a.n.localeCompare(b.n));
   const why=r=>[r.tasks&&r.tasks+' task'+(r.tasks===1?'':'s'),r.perfect&&r.perfect+' perfect',r.faces&&r.faces+' face'+(r.faces===1?'':'s')].filter(Boolean).join(' · ');
   return `<div class="editor" style="margin-top:12px"><h2>Weekly ranking</h2>
     <div class="sub" style="margin-top:0"><button data-rw="0" aria-pressed="${!rankWeek}">This week</button><button data-rw="1" aria-pressed="${!!rankWeek}">Last week</button></div>
-    <div class="status">${esc(dayLabel(ws).replace(/^\w+, /,''))} – ${esc(dayLabel(addDays(ws,6)).replace(/^\w+, /,''))}. 1 point per task checked off, 1 per 100% Spell, 1 per face that turns solid.</div>
+    <div class="status">${esc(shortDay(P.startDay))} – ${esc(shortDay(P.endDay))} (meeting to meeting). 1 point per task checked off, 1 per 100% Spell, 1 per face that turns solid.</div>
     ${rows[0].pts?'':'<div class="status">No points yet. The top 3 show once someone scores.</div>'}<div class="podium">${rows.slice(0,rows[0].pts?3:0).map((r,i)=>`<div class="pod"><span class="pl">${i+1}</span><div><b>${esc(r.n)}${r.n===me?' (you)':''}</b><small>${esc(why(r))||'No points yet'}</small></div><span class="pts">${r.pts}</span></div>`).join('')}</div>
     <table class="lb">${rows.slice(rows[0].pts?3:0).map((r,i)=>`<tr><td class="n" style="width:2em;text-align:left">${i+(rows[0].pts?4:1)}</td><td>${esc(r.n)}${r.n===me?' <b>(you)</b>':''}</td><td class="n">${r.pts}</td></tr>`).join('')}</table></div>`;
 }
@@ -593,7 +593,21 @@ function renderLog(){
 // ---------- today ----------
 const todayEl=document.getElementById('today');
 let ongoingOpen=false;
-const weekStart = iso => addDays(iso, -((dow(iso)+6)%7));
+// the "week" runs from one meeting to the next: meetings are tasks titled "Meeting #n" (8:30 PM unless the task has a time); no upcoming meeting -> Sunday 11:59 PM
+const MEETING_RE=/^Meeting #(\d+)/;
+const localTs = (iso, hm) => new Date(iso+'T'+(hm||'20:30')+':00').getTime();
+const meetings = () => S.tasks.filter(t=>t.due&&MEETING_RE.test(t.title||'')).map(t=>({n:+t.title.match(MEETING_RE)[1], due:t.due, ts:localTs(t.due,t.time||'20:30')})).sort((a,b)=>a.ts-b.ts);
+const shortDay = iso => new Date(iso+'T12:00:00').toLocaleDateString('en-US',{weekday:'short'})+' '+mdy(iso);
+function periodAt(ts){
+  ts=ts||Date.now(); const M=meetings(), nx=M.find(m=>m.ts>ts), pv=M.filter(m=>m.ts<=ts).pop();
+  let end; if(nx) end=nx.ts; else { const d=isoDay(ts); end=localTs(addDays(d,(7-dow(d))%7),'23:59'); if(end<=ts) end=localTs(addDays(d,((7-dow(d))%7)+7),'23:59'); }
+  const start=pv?pv.ts:end-7*864e5;
+  return mkPeriod(start, end, nx);
+}
+function prevPeriod(P){ const pv=meetings().filter(m=>m.ts<P.start).pop(); return mkPeriod(pv?pv.ts:P.start-7*864e5, P.start, null); }
+function mkPeriod(start, end, nx){
+  return {start, end, startDay:isoDay(start), endDay:isoDay(end), label: nx?`Resets after Meeting #${nx.n} · ${shortDay(nx.due)}`:`Resets ${shortDay(isoDay(end))}, 11:59 PM`};
+}
 const doneDay = (t,n) => { const x=(t.done||{})[n]; return x?isoDay(x):null; };
 function planFor(n, base){
   // day-by-day plan computed from tasks: dated on their date, overdue under catch up; undated tasks are ongoing and sit in their own list
@@ -603,16 +617,16 @@ function planFor(n, base){
     else if(t.due>=base) put(t.due,t); else if(!dd||dd===base) catchup.push(t); }
   return {catchup, ongoing, days:Object.keys(days).sort().map(d=>[d,days[d].sort((a,b)=>(a.time||'99:99')<(b.time||'99:99')?-1:1)])};
 }
-function weekStats(names, base){
-  // this week (Mon-Sun): dated tasks still open and due by Sunday, plus dated ones finished this week; ongoing tasks don't count
-  base=base||today(); const ws=weekStart(base), we=addDays(ws,6); let tot=0, done=0;
-  for(const n of names) for(const t of S.tasks){ if(!isFor(t,n)||!t.due) continue; const dd=doneDay(t,n); if(dd&&dd<ws) continue; if(!dd&&t.due>we) continue; tot++; if(dd) done++; }
+function weekStats(names, P){
+  // this period (meeting to meeting): dated tasks still open and due by the next meeting, plus dated ones finished this period; ongoing tasks don't count
+  P=P||periodAt(); let tot=0, done=0;
+  for(const n of names) for(const t of S.tasks){ if(!isFor(t,n)||!t.due) continue; const x=(t.done||{})[n], dt=x?Date.parse(x):0; if(x&&dt<=P.start) continue; if(!x&&t.due>P.endDay) continue; tot++; if(x) done++; }
   return {tot, done, pct: tot?Math.round(100*done/tot):null};
 }
 function streakFor(n, base){
-  // consecutive days (back from today) where every task due that day was done by that day; days with nothing due are skipped
-  base=base||today(); let s=0;
-  for(let i=0;i<90;i++){ const d=addDays(base,-i), planned=S.tasks.filter(t=>isFor(t,n)&&t.due===d); if(!planned.length) continue;
+  // consecutive days (back from today, within this meeting period) where every task due that day was done by that day; days with nothing due are skipped
+  base=base||today(); const from=periodAt().startDay; let s=0;
+  for(let i=0;i<90;i++){ const d=addDays(base,-i); if(d<from) break; const planned=S.tasks.filter(t=>isFor(t,n)&&t.due===d); if(!planned.length) continue;
     if(planned.every(t=>{ const dd=doneDay(t,n); return dd&&dd<=d; })) s++; else if(i) break; }
   return s;
 }
@@ -620,14 +634,14 @@ const ring = pct => { const C=2*Math.PI*26, p=pct===null?0:pct; return `<svg cla
 const checkRow = (t,n,late) => `<div class="task" data-id="${esc(t.id)}"><div class="t"><label class="ck"><input type="checkbox" data-tog ${isDone(t,n)?'checked':''} aria-label="Mark done"></label><span class="ttl">${esc(t.title)}</span><span class="due ${late?'late':''}">${esc(dueText(t.due))}${t.time?' · '+timeText(t.time):''}${t.due&&examOn(n,t.due).length?'<br>exam that day':''}</span></div></div>`;
 function renderToday(){
   if(!me){ todayEl.innerHTML=`<div class="editor"><h2>Hi there</h2><div class="status">Pick your name to see your plan.</div><div class="ctrl"><button class="btn primary" id="tpick">Pick your name</button></div></div>`+weeklyHtml(); todayEl.querySelector('#tpick').onclick=askName; return; }
-  const t0=today(), t1=addDays(t0,1), plan=planFor(me,t0), wk=weekStats([me],t0), cls=weekStats(PC(),t0), st=streakFor(me,t0);
+  const t0=today(), t1=addDays(t0,1), plan=planFor(me,t0), P=periodAt(), wk=weekStats([me],P), cls=weekStats(PC(),P), st=streakFor(me,t0);
   const now=S.tasks.filter(t=>isFor(t,me)&&!isDone(t,me)&&t.due&&t.due<=t0).length;
   const solid=Object.values(S.drill[me]||{}).filter(x=>x.last==='ok'&&(x.streak||0)>=2).length;
   const spell=ROLLS.filter(r=>rollBest(me,r.cls)===100).length;
   const dayName = d => d===t0?'Today':d===t1?'Tomorrow':dayLabel(d);
   const goal = (d,ts) => { const k=ts.filter(t=>isDone(t,me)).length; return `${d===t0?"Today's goal":'Goal'}: ${k} of ${ts.length} done`; };
   todayEl.innerHTML=`<h2 class="hi">Hi ${esc(first(me))}</h2><div class="status">${now?`${now} task${now===1?'':'s'} due today or overdue.`:'Nothing due today.'}</div>
-    <div class="meter">${ring(wk.pct)}<div><b>This week</b><div class="status" style="margin:0">${wk.done} of ${wk.tot} done · resets Monday</div><div class="status" style="margin:2px 0 0">${st}-day streak</div></div></div>
+    <div class="meter">${ring(wk.pct)}<div><b>This week</b><div class="status" style="margin:0">${wk.done} of ${wk.tot} done</div><div class="status" style="margin:2px 0 0">${esc(P.label)}</div><div class="status" style="margin:2px 0 0">${st}-day streak</div></div></div>
     <div class="clsbar"><span>Whole class: ${cls.pct===null?'—':cls.pct+'%'} this week</span><div class="bar"><i style="width:${cls.pct||0}%"></i></div></div>
     ${examsTomorrowHtml()}
     ${weeklyHtml()}
@@ -654,8 +668,8 @@ function weeklyHtml(){
   const atInf=I?pc.filter(n=>I[n].done>=I[n].target).length:0, ms=MILESTONES.items.map(m=>[m, pc.filter(n=>{ const [a,b]=m.val(n); return b>0&&a>=b; }).length]);
   const goals=[[`${INFORMALS.target} informals each (${Object.entries(INFORMALS.targets).map(([n,v])=>esc(first(n))+' '+v).join(', ')}) by ${mdy(INFORMALS.by)}`, I?`${atInf} of ${pc.length} there`:'not synced yet'],
     [`${SIG_TARGET.pct}% of sig tasks signed by ${mdy(SIG_TARGET.by)}`, all.length?`${signed} of ${all.length} signed`:'none tracked yet']].concat(ms.map(([m,k])=>[`${m.label} by ${mdy(MILESTONES.by)}`, `${k} of ${pc.length} there`]));
-  const tk=pc.map(n=>[n,weekStats([n],t0)]);
-  return `<div class="editor weekly"><h2>Weekly progress</h2>
+  const P=periodAt(), tk=pc.map(n=>[n,weekStats([n],P)]);
+  return `<div class="editor weekly"><h2>Weekly progress</h2><div class="status" style="margin-top:-6px">${esc(P.label)}</div>
     <h3 class="wh">Informals done ${I?`<small>${esc(informalsUpdated())} · line = target</small>`:''}</h3>${bars}
     <h3 class="wh">This week's goals</h3><ul class="goals">${goals.map(([g,v])=>`<li><span>${g}</span><b>${esc(v)}</b></li>`).join('')}</ul>
     <h3 class="wh">Tasks done this week</h3>${tk.map(([n,w])=>`<div class="hb"><span class="hl">${esc(first(n))}</span><div class="ht"><i style="width:${w.tot?(100*w.done/w.tot).toFixed(1):0}%"></i></div><span class="hv">${w.done} of ${w.tot}</span></div>`).join('')}</div>`;
@@ -808,7 +822,7 @@ function renderRollBoard(){
 }
 
 // ---------- error safety net ----------
-function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06k'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
+function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06l'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
   b.innerHTML='<span style="flex:1;word-break:break-word">Something broke: '+esc(msg)+'</span><button onclick="location.reload()" style="border:0;background:#fff;color:#B23A3A;border-radius:8px;padding:6px 10px;font:600 13px \'Public Sans\',sans-serif;cursor:pointer">Reload</button><button onclick="document.getElementById(\'errbar\').remove()" style="border:0;background:transparent;color:#fff;font-size:18px;cursor:pointer">×</button>'; }
 window.addEventListener('error', e=>{ showErr((e.message||'error')+' @'+(e.lineno||'?')); try{ render(); }catch(x){} });
 window.addEventListener('unhandledrejection', e=>{ showErr('async: '+((e.reason&&e.reason.message)||e.reason||'error')); });
