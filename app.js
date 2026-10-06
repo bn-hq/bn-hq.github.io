@@ -9,11 +9,11 @@ function fromDb(d){
   d=d||{};
   const cards=objToArr(d.cards,'order'); cards.forEach(c=>{ c.extra=c.extra||{}; });
   const byAtDesc=(a,b)=>(a.at<b.at?1:-1);
-  return { version:d.version||0, cards, log:objToArr(d.log).sort(byAtDesc), facts:objToArr(d.facts,'order'), tasks:objToArr(d.tasks).sort((a,b)=>(a.due||'9999')<(b.due||'9999')?-1:1), recitals:objToArr(d.recitals).sort(byAtDesc), guide:objToArr(d.guide,'order'), passages: d.passages? objToArr(d.passages,'order') : SEED.passages, drill:d.drill||{}, informals:d.informals||null, exams:d.exams||{} };
+  return { version:d.version||0, cards, log:objToArr(d.log).sort(byAtDesc), facts:objToArr(d.facts,'order'), tasks:objToArr(d.tasks).sort((a,b)=>(a.due||'9999')<(b.due||'9999')?-1:1), recitals:objToArr(d.recitals).sort(byAtDesc), guide:objToArr(d.guide,'order'), passages: d.passages? objToArr(d.passages,'order') : SEED.passages, drill:d.drill||{}, informals:d.informals||null, exams:d.exams||{}, quiz:d.quiz||null };
 }
 async function dbGet(path){ const r=await fetch(DB+'/'+path+'.json',{cache:'no-store'}); if(!r.ok) throw new Error('read '+r.status); return r.json(); }
 async function dbWrite(method,path,body){ const r=await fetch(DB+'/'+path+'.json',{method,body:body===undefined?undefined:JSON.stringify(body)}); if(!r.ok) throw new Error('write '+r.status); return r.json(); }
-const KEYS=['version','cards','log','facts','tasks','recitals','passages','drill','guide','informals','exams'];
+const KEYS=['version','cards','log','facts','tasks','recitals','passages','drill','guide','informals','exams','quiz'];
 async function loadPhotos(){
   if(Object.keys(URIS).length) return;
   try{ const c=localStorage.getItem('bn-photos'); if(c){ URIS=JSON.parse(c); if(Object.keys(URIS).length) { checkPhotoVersion(); return; } } }catch(e){}
@@ -59,6 +59,8 @@ async function commit(entry, mutate){
     if(JSON.stringify(S.facts)!==JSON.stringify(next.facts)){ const o={}; next.facts.forEach((f,i)=>{ o[f._k||('f'+Date.now().toString(36)+i)]={q:f.q,a:f.a,order:i}; }); ops.push(dbWrite('PUT','facts',o)); }
     // passages
     if(JSON.stringify(S.passages)!==JSON.stringify(next.passages)){ const o={}; next.passages.forEach((p,i)=>{ o[p.id]={id:p.id,title:p.title,text:p.text,order:i}; }); ops.push(dbWrite('PUT','passages',o)); }
+    // quiz bank (PCP edits): small, rewrite whole
+    if(JSON.stringify(S.quiz||null)!==JSON.stringify(next.quiz||null)) ops.push(dbWrite('PUT','quiz',next.quiz));
     // drill: PATCH my subtree only
     if(JSON.stringify(S.drill[me]||{})!==JSON.stringify(next.drill[me]||{})) ops.push(dbWrite('PUT','drill/'+key(me),next.drill[me]||{}));
     // recitals: POST new ones (those without _k)
@@ -120,7 +122,7 @@ function renderChips(){
   chipsEl.innerHTML = items.map(([k,l])=>`<button class="chip" data-f="${esc(k)}" aria-pressed="${filter===k}">${esc(l)}</button>`).join('');
 }
 chipsEl.addEventListener('click', e=>{ const b=e.target.closest('.chip'); if(!b) return; filter=b.dataset.f; renderChips(); saveDrill(); resetOrder(); render(); });
-const STUDY=['learn','roll'], INFO=['guide','facts','log'], TASKS=['tasks','sigs'];
+const STUDY=['learn','roll','quizzes'], INFO=['guide','facts','log'], TASKS=['tasks','sigs'];
 let lastStudy='learn', lastInfo='guide', lastTasks='tasks'; try{ const v=JSON.parse(localStorage.getItem('bn-sub')||'{}'); if(STUDY.includes(v.s)) lastStudy=v.s; if(INFO.includes(v.i)) lastInfo=v.i; if(TASKS.includes(v.t)) lastTasks=v.t; }catch(e){}
 const tabOf = m => STUDY.includes(m)?'study':INFO.includes(m)?'info':TASKS.includes(m)?'tasks':m;
 function setMode(m){
@@ -497,8 +499,9 @@ function renderTasks(){
 // ---------- milestones ----------
 // what "done" means for each milestone; change the date or tests here
 const MILESTONES={by:'2026-10-12', items:[
-  {id:'names', label:'All names', how:'every card solid (Knew it twice in a row on Flashcards)', val:n=>[Object.values(S.drill[n]||{}).filter(x=>x.last==='ok'&&(x.streak||0)>=2).length, S.cards.length]},
-  {id:'quiz', label:'Quiz 100%', how:'Spell 100% on all 4 class rolls', val:n=>[ROLLS.filter(r=>rollBest(n,r.cls)===100).length, ROLLS.length]}]};
+  {id:'names', label:'All names', how:'Spell 100% on all 4 classes, plus every flashcard solid (Knew it twice in a row)', val:n=>[ROLLS.filter(r=>rollBest(n,r.cls)===100).length+Object.values(S.drill[n]||{}).filter(x=>x.last==='ok'&&(x.streak||0)>=2).length, ROLLS.length+S.cards.length]},
+  {id:'quiz', label:'Quiz 100%', how:'100% on every filled-in official question (Q1–19)', val:n=>officialQuiz(n)}]};
+function officialQuiz(n){ const set=qSets().find(x=>x.id==='official'); if(!set) return [0,0]; const xs=qItems(set); return [xs.filter(x=>qBest(n,set.id,x.id)===100).length, xs.length]; }
 function msLeft(){ const d=Math.round((new Date(MILESTONES.by+'T12:00:00')-new Date(today()+'T12:00:00'))/864e5); return d>1?d+' days left':d===1?'1 day left':d===0?'due today':'past due'; }
 function milestonesHtml(){
   const M=MILESTONES.items, rows=PC().map(n=>({n,v:M.map(m=>m.val(n))})), met=([a,b])=>b>0&&a>=b, late=today()>MILESTONES.by;
@@ -548,9 +551,9 @@ function renderAcct(){
   const clsSigs=sigCards().filter(c=>sigOf(c).status==='signed').length+'/'+sigCards().length;
   const pctCell=b=>`<td class="n${b===100?' hit':''}">${b===null?'—':b+'%'}</td>`;
   acctEl.innerHTML=milestonesHtml()+informalsHtml()+rankHtml()+`<div class="editor" style="margin-top:12px"><h2>Where everyone stands</h2>
-    <div class="status">Green = target hit. Faces = cards marked Knew it twice in a row on Flashcards. Spell = best score (target 100%). Tasks = done / assigned. Sigs signed = the class's signed sig tasks (done together).</div>
-    <div style="overflow-x:auto"><table class="lb"><tr><th>Pledge</th><th class="n">Faces</th>${ROLLS.map(r=>`<th class="n">${esc(r.cls.replace('Beta ',''))}</th>`).join('')}<th class="n">Tasks</th><th class="n">Sigs signed</th></tr>
-    ${rows.map(r=>`<tr><td>${esc(r.n.split(' ')[0])}${r.n===me?' <b>(you)</b>':''}</td><td class="n${r.solid>=total?' hit':''}">${r.solid}/${total}</td>${r.spell.map(pctCell).join('')}<td class="n${r.assigned&&r.done===r.assigned?' hit':''}">${r.done}/${r.assigned}</td><td class="n">${clsSigs}</td></tr>`).join('')}</table></div>
+    <div class="status">Green = target hit. Faces = cards marked Knew it twice in a row on Flashcards. Spell = best score (target 100%). Quiz = official questions at 100%. Tasks = done / assigned. Sigs signed = the class's signed sig tasks (done together).</div>
+    <div style="overflow-x:auto"><table class="lb"><tr><th>Pledge</th><th class="n">Faces</th>${ROLLS.map(r=>`<th class="n">${esc(r.cls.replace('Beta ',''))}</th>`).join('')}<th class="n">Quiz Q1–19</th><th class="n">Tasks</th><th class="n">Sigs signed</th></tr>
+    ${rows.map(r=>`<tr><td>${esc(r.n.split(' ')[0])}${r.n===me?' <b>(you)</b>':''}</td><td class="n${r.solid>=total?' hit':''}">${r.solid}/${total}</td>${r.spell.map(pctCell).join('')}${(()=>{ const [a,b]=officialQuiz(r.n); return `<td class="n${b&&a===b?' hit':''}">${b?a+'/'+b:'—'}</td>`; })()}<td class="n${r.assigned&&r.done===r.assigned?' hit':''}">${r.done}/${r.assigned}</td><td class="n">${clsSigs}</td></tr>`).join('')}</table></div>
     <div class="status">Spell columns: Psi, Chi, Phi, Upsilon rolls.</div></div>
     ${me&&S.drill[me]?`<div class="editor" style="margin-top:12px"><h2>Your weak spots</h2><div class="grid" style="margin-top:6px">${S.cards.filter(c=>{const x=S.drill[me][c.photo]; return x&&x.last!=='ok';}).map(c=>{const x=S.drill[me][c.photo]; return `<div class="tile"><img src="${IMG(c.photo)}" alt=""><div>${esc(c.name)}<small>${x.last==='miss'?'name wrong':'facts shaky'} · ${x.miss} wrong · ${x.some||0} partial</small></div></div>`;}).join('')||'<div class="status">No misses on record. Either you are cracked or you have not drilled.</div>'}</div></div>`:''}`;
   acctEl.querySelectorAll('[data-rw]').forEach(b=>b.onclick=()=>{ rankWeek=+b.dataset.rw; renderAcct(); });
@@ -658,21 +661,117 @@ function weeklyHtml(){
     <h3 class="wh">Tasks done this week</h3>${tk.map(([n,w])=>`<div class="hb"><span class="hl">${esc(first(n))}</span><div class="ht"><i style="width:${w.tot?(100*w.done/w.tot).toFixed(1):0}%"></i></div><span class="hv">${w.done} of ${w.tot}</span></div>`).join('')}</div>`;
 }
 
+// ---------- quizzes (question bank in Firebase `quiz`, attempts in recitals as quiz:set:item) ----------
+const quizEl=document.getElementById('quizzes');
+const byOrder=(a,b)=>(a.order??0)-(b.order??0);
+const qSets = () => Object.entries((S.quiz&&S.quiz.sets)||{}).map(([id,x])=>Object.assign({id},x)).sort(byOrder);
+const qFilled = set => Object.entries(set.items||{}).map(([id,x])=>Object.assign({id},x)).filter(x=>String(x.a||'').trim()).sort(byOrder);
+function qItems(set){
+  // "both" sets (e.g. executive board) are asked both ways
+  const xs=qFilled(set); if(!set.both) return xs.map(x=>({id:x.id,q:x.q,a:x.a,alt:x.alt||[]}));
+  return xs.flatMap(x=>[{id:x.id,q:`Who is the ${x.q}?`,a:x.a,alt:x.alt||[]},{id:x.id+'~r',q:`What position does ${x.a} hold?`,a:x.q,alt:[x.q.replace(/^Beta Nu /,'')]}]);
+}
+const qBest = (n,setId,itemId) => { const rs=S.recitals.filter(r=>r.who===n&&r.passage===`quiz:${setId}:${itemId}`); return rs.length?Math.max(...rs.map(r=>r.pct)):null; };
+function qScore(n,set){ const xs=qItems(set); if(!xs.length) return null; const b=xs.map(x=>qBest(n,set.id,x.id)||0); return {pct:Math.round(b.reduce((s,v)=>s+v,0)/xs.length), mastered:b.every(v=>v===100), perfect:b.filter(v=>v===100).length, total:xs.length}; }
+function qGrade(item, typed){ let best=null; for(const ans of [item.a].concat(item.alt||[])){ const g=lcsGrade(qtoks(ans),qtoks(typed),false); g.ans=ans; if(!best||g.pct>best.pct) best=g; } return best; }
+let qz={phase:'pick', mode:'order', set:null, run:[], i:0, res:{}, input:'', g:null, draft:null};
+function qStart(set, mode){
+  let xs=qItems(set); if(mode==='missed') xs=xs.filter(x=>(qBest(me,set.id,x.id)||0)<100); if(mode==='shuffle') xs=shuffle(xs.slice());
+  if(!xs.length){ toast(mode==='missed'?'Nothing missed. Every question is at 100%.':'No questions in this set yet.'); return; }
+  qz=Object.assign(qz,{phase:'ask', set:set.id, run:xs, i:0, res:{}, input:'', g:null}); renderQuizzes(); setTimeout(()=>{ const t=quizEl.querySelector('#qa'); if(t) t.focus(); },50);
+}
+const tokHtml = (toks, ok) => toks.map((w,i)=>`<span class="tk ${ok[i]?'ok':'miss'}">${esc(w)}</span>`).join(' ').replace(/ (<span class="tk [a-z]+">[,.;:!?)]<\/span>)/g,'$1');
+function renderQuizzes(){
+  const sets=qSets(), set=sets.find(x=>x.id===qz.set), pcp=isPCP();
+  if(!S.quiz){ quizEl.innerHTML='<div class="reveal" style="margin-top:14px">The question bank isn\'t set up yet.</div>'; return; }
+  if(qz.phase==='edit'&&set) return renderQuizEdit(set);
+  if(qz.phase==='ask'||qz.phase==='checked'){
+    const it=qz.run[qz.i], g=qz.g;
+    quizEl.innerHTML=`<div class="ctrl" style="justify-content:space-between;align-items:center"><span class="status" style="margin:0">${esc(set.title)} · question ${qz.i+1} of ${qz.run.length}</span><button class="small" id="qback">Back to sets</button></div>
+      <div class="editor"><h2 class="qq">${esc(it.q)}</h2>
+        <div class="field"><textarea id="qa" rows="3" placeholder="Type the answer exactly. Capitals don't matter; spelling and punctuation do." ${qz.phase==='checked'?'readonly':''}>${esc(qz.input)}</textarea></div>
+        ${qz.phase==='checked'?`<div class="big">${g.pct}%<small> · ${g.hit}/${g.total} · ${g.extras} extra</small></div><div class="passage" style="margin-top:6px">${tokHtml(qtoks(g.ans),g.ok)}</div><div class="legend"><span class="tk ok">green</span> matched <span class="tk miss">red</span> missed</div><div class="status" id="qlog">Saving…</div>`:''}
+        <div class="ctrl"><button class="btn primary" id="qgo">${qz.phase==='checked'?(qz.i+1<qz.run.length?'Next':'Finish'):'Check'}</button></div></div>`;
+    const ta=quizEl.querySelector('#qa'); ta.oninput=()=>{ qz.input=ta.value; };
+    ta.onkeydown=e=>{ if(e.key==='Enter'&&(e.metaKey||e.ctrlKey)){ e.preventDefault(); quizEl.querySelector('#qgo').click(); } };
+    quizEl.querySelector('#qback').onclick=()=>{ qz.phase='pick'; renderQuizzes(); };
+    quizEl.querySelector('#qgo').onclick=async()=>{
+      if(qz.phase==='ask'){ if(!qz.input.trim()){ ta.focus(); return; } if(!me){ askName(); return; }
+        qz.g=qGrade(it, qz.input); qz.res[it.id]=qz.g.pct; qz.phase='checked'; renderQuizzes(); const pct=qz.g.pct;
+        const ok=await commit(null, st=>{ st.recitals.unshift({who:me,at:when(),passage:`quiz:${set.id}:${it.id}`,pct}); });
+        const l=quizEl.querySelector('#qlog'); if(l) l.textContent=ok?'Saved to your record.':'Not saved (see message).';
+      } else if(qz.i+1<qz.run.length){ qz.i++; qz.input=''; qz.g=null; qz.phase='ask'; renderQuizzes(); quizEl.querySelector('#qa').focus(); }
+      else { qz.phase='done'; renderQuizzes(); }
+    };
+    return;
+  }
+  if(qz.phase==='done'&&set){
+    const vals=Object.values(qz.res), avg=vals.length?Math.round(vals.reduce((a,b)=>a+b,0)/vals.length):0, missed=vals.filter(v=>v<100).length;
+    quizEl.innerHTML=`<div class="editor"><h2>${esc(set.title)}</h2><div class="big">${avg}%<small> average this run · ${missed} below 100%</small></div>
+      <div class="ctrl">${missed?'<button class="btn primary" id="qmiss">Re-quiz missed</button>':''}<button class="btn" id="qsets">Back to sets</button></div></div>`;
+    const qm=quizEl.querySelector('#qmiss'); if(qm) qm.onclick=()=>qStart(set,'missed');
+    quizEl.querySelector('#qsets').onclick=()=>{ qz.phase='pick'; renderQuizzes(); };
+    return;
+  }
+  qz.phase='pick';
+  quizEl.innerHTML=`<div class="sub" style="margin-top:14px">${[['order','In order'],['shuffle','Shuffle'],['missed','Missed only']].map(([k,l])=>`<button data-qm="${k}" aria-pressed="${qz.mode===k}">${l}</button>`).join('')}</div>
+    ${sets.map(x=>{ const sc=me&&qScore(me,x), n=qItems(x).length; return `<div class="qset" data-set="${esc(x.id)}"><div><b>${esc(x.title)}</b><small>${n?`${n} question${n===1?'':'s'}${sc?` · your score ${sc.pct}%${sc.mastered?' · Mastered':''}`:''}`:esc(x.note||'No questions yet.')}</small></div>${pcp?'<button class="small" data-qedit>Edit</button>':''}${n?'<button class="btn" data-qstart style="flex:0 0 auto">Start</button>':''}</div>`; }).join('')}
+    <div class="qset"><div><b>Classes</b><small>Spell each class roll from memory</small></div><button class="btn" id="qspell" style="flex:0 0 auto">Open Spell</button></div>
+    <div class="status">Capitals and extra spaces don't matter; spelling, punctuation and word order do. Your score for a set is the average of your best on each question; Mastered = 100% on every one.</div>`;
+  quizEl.querySelectorAll('[data-qm]').forEach(b=>b.onclick=()=>{ qz.mode=b.dataset.qm; renderQuizzes(); });
+  quizEl.querySelectorAll('[data-qstart]').forEach(b=>b.onclick=()=>qStart(sets.find(x=>x.id===b.closest('[data-set]').dataset.set), qz.mode));
+  quizEl.querySelectorAll('[data-qedit]').forEach(b=>b.onclick=()=>{ const x=sets.find(y=>y.id===b.closest('[data-set]').dataset.set); qz.set=x.id; qz.draft=Object.entries(x.items||{}).map(([id,v])=>Object.assign({id},v)).sort(byOrder).map(v=>({id:v.id,q:v.q||'',a:v.a||'',alt:(v.alt||[]).join(' | ')})); qz.phase='edit'; renderQuizzes(); });
+  quizEl.querySelector('#qspell').onclick=()=>setMode('roll');
+}
+function renderQuizEdit(set){
+  // PCP only: add, edit and reorder questions; saved through commit() and logged
+  if(!isPCP()){ qz.phase='pick'; return renderQuizzes(); }
+  const D=qz.draft;
+  quizEl.innerHTML=`<div class="editor"><h2>Edit · ${esc(set.title)}</h2>${D.map((x,i)=>`<div class="qedit" data-i="${i}"><div class="ctrl" style="margin:0 0 4px;align-items:center"><b style="flex:1">${set.both?'':'Q'}${i+1}</b><button class="small" data-up ${i?'':'disabled'}>↑</button><button class="small" data-dn ${i<D.length-1?'':'disabled'}>↓</button><button class="small" data-rm>×</button></div>
+      <div class="field"><label>${set.both?'Position':'Question'}</label><textarea data-k="q" rows="2">${esc(x.q)}</textarea></div>
+      <div class="field"><label>${set.both?'Name':'Answer (leave empty to hide from quizzes)'}</label><textarea data-k="a" rows="2">${esc(x.a)}</textarea></div>
+      <div class="field"><label>Also accept (separate with |)</label><input data-k="alt" value="${esc(x.alt)}"></div></div>`).join('')}
+    <div class="ctrl"><button class="small" id="qadd">+ Add question</button></div>
+    <div class="ctrl"><button class="btn" id="qcancel">Cancel</button><button class="btn primary" id="qsave">Save for everyone</button></div></div>`;
+  quizEl.querySelectorAll('.qedit').forEach(el=>{ const i=+el.dataset.i;
+    el.querySelectorAll('[data-k]').forEach(f=>f.oninput=()=>{ D[i][f.dataset.k]=f.value; });
+    el.querySelector('[data-up]').onclick=()=>{ [D[i-1],D[i]]=[D[i],D[i-1]]; renderQuizEdit(set); };
+    el.querySelector('[data-dn]').onclick=()=>{ [D[i+1],D[i]]=[D[i],D[i+1]]; renderQuizEdit(set); };
+    el.querySelector('[data-rm]').onclick=()=>{ if(D[i].q.trim()&&!confirm('Remove this question?')) return; D.splice(i,1); renderQuizEdit(set); }; });
+  quizEl.querySelector('#qadd').onclick=()=>{ D.push({id:'i'+uid(),q:'',a:'',alt:''}); renderQuizEdit(set); const t=quizEl.querySelectorAll('.qedit textarea[data-k=q]'); t[t.length-1].focus(); };
+  quizEl.querySelector('#qcancel').onclick=()=>{ qz.phase='pick'; renderQuizzes(); };
+  quizEl.querySelector('#qsave').onclick=async()=>{
+    const items={}, old=set.items||{}, ch=[];
+    D.filter(x=>x.q.trim()).forEach((x,i)=>{ const alt=x.alt.split('|').map(v=>v.trim()).filter(Boolean); items[x.id]=Object.assign({q:x.q.trim(),a:x.a.trim(),order:i+1},alt.length?{alt}:{});
+      const o=old[x.id]; if(!o) ch.push({field:'Added question',from:'',to:x.q.trim()}); else if(o.q!==items[x.id].q||(o.a||'')!==items[x.id].a||JSON.stringify(o.alt||[])!==JSON.stringify(alt)) ch.push({field:x.q.trim(),from:o.a||'',to:items[x.id].a}); });
+    for(const id of Object.keys(old)) if(!items[id]) ch.push({field:'Removed question',from:old[id].q,to:''});
+    if(!ch.length&&JSON.stringify(Object.keys(old).sort((a,b)=>old[a].order-old[b].order))===JSON.stringify(Object.keys(items))){ qz.phase='pick'; return renderQuizzes(); }
+    if(!ch.length) ch.push({field:'Reordered questions',from:'',to:D.length+' questions'});
+    const ok=await commit({who:me,at:when(),card:'Quiz · '+set.title,changes:ch}, st=>{ st.quiz.sets[set.id].items=items; });
+    if(ok){ qz.phase='pick'; renderQuizzes(); }
+  };
+}
+
 // ---------- spell (roll call) ----------
 const rollEl=document.getElementById('roll');
 const ROLLS=(SEED.rolls||[]).slice().sort((a,b)=>clsRank(a.cls)-clsRank(b.cls));
 let rIdx=0, rDraft={};
 const nw = w => w.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
 const words = t => String(t||'').replace(/\*/g,'').split(/[\s\-]+/).filter(w=>nw(w));
-function rollWords(r){ return [['Class',[r.cls]],['VPPE',[r.vppe]],['Members',r.members]].map(([l,xs])=>[l,xs.map(x=>words(x))]); }
-function gradeRoll(r, typed){
-  // exact (normalized) LCS between expected and typed words, order matters
-  const E=rollWords(r).flatMap(([,ls])=>ls.flat()), T=words(typed), m=E.length, n=T.length, a=E.map(nw), b=T.map(nw);
-  const dp=Array.from({length:m+1},()=>new Int32Array(n+1));
+const qtoks = t => String(t||'').match(/[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*|[^\s\p{L}\p{N}]/gu)||[];
+const qkey = (w, accents) => { w=String(w).replace(/[“”]/g,'"').replace(/[‘’]/g,"'"); if(accents) w=w.normalize('NFD').replace(/[\u0300-\u036f]/g,''); return w.toLowerCase(); };
+function lcsGrade(E, T, accents){
+  // order-aware LCS on tokens (words and punctuation); case-insensitive, everything else must match
+  const a=E.map(w=>qkey(w,accents)), b=T.map(w=>qkey(w,accents)), m=a.length, n=b.length, dp=Array.from({length:m+1},()=>new Int32Array(n+1));
   for(let i=m-1;i>=0;i--) for(let j=n-1;j>=0;j--) dp[i][j]= a[i]===b[j] ? dp[i+1][j+1]+1 : Math.max(dp[i+1][j],dp[i][j+1]);
   const ok=new Array(m).fill(false); let i=0,j=0; while(i<m&&j<n){ if(a[i]===b[j]){ ok[i]=true; i++; j++; } else if(dp[i+1][j]>=dp[i][j+1]) i++; else j++; }
   const hit=ok.filter(Boolean).length, extras=n-hit;
-  return {ok, hit, total:m, extras, pct:Math.max(0, Math.floor(100*hit/m - 0.5*extras))};
+  return {ok, hit, total:m, extras, pct:m?Math.max(0, Math.floor(100*hit/m - 0.5*extras)):0};
+}
+function rollWords(r){ return [['Class',[r.cls]],['VPPE',[r.vppe]],['Members',r.members]].map(([l,xs])=>[l,xs.map(x=>qtoks(x.replace(/\*/g,'')))]); }
+function gradeRoll(r, typed){
+  // Spell: not case-sensitive, accents optional, * ignored; spelling, punctuation and order all count
+  return lcsGrade(rollWords(r).flatMap(([,ls])=>ls.flat()), qtoks(typed), true);
 }
 const rollBest = (n,cls) => { const rs=S.recitals.filter(x=>x.who===n&&x.passage==='roll:'+cls); return rs.length?Math.max(...rs.map(x=>x.pct)):null; };
 function renderRoll(){
@@ -684,14 +783,14 @@ function renderRoll(){
       <div class="field"><label>VPPE</label><input id="rv" autocomplete="off" autocapitalize="words" value="${esc(d.v)}"></div>
       <div class="field"><label>Members (one per line, in order)</label><textarea id="rm" autocapitalize="words" style="min-height:220px">${esc(d.m)}</textarea></div>
       <div class="ctrl"><button class="btn primary" id="rcheck">Check it</button></div>
-      <div class="status">Full official names, in order. Capitals and accents don't matter. Target: 100% on all four classes.</div></div>
+      <div class="status">Full official names, in order. Capitals and accents don't matter; spelling, punctuation and order do. Target: 100% on all four classes.</div></div>
     <div id="rres"></div><div id="rboard"></div>`;
   rollEl.querySelectorAll('[data-ri]').forEach(b=>b.onclick=()=>{ rIdx=+b.dataset.ri; renderRoll(); });
   for(const [id,k] of [['rc','c'],['rv','v'],['rm','m']]) rollEl.querySelector('#'+id).oninput=e=>{ d[k]=e.target.value; };
   rollEl.querySelector('#rcheck').onclick=async()=>{
     const typed=[d.c,d.v,d.m].join('\n'); if(!words(typed).length){ toast('Type the roll first.'); return; }
     const g=gradeRoll(r,typed); let k=0;
-    const line=ws=>ws.map(w=>`<span class="tk ${g.ok[k++]?'ok':'miss'}">${esc(w)}</span>`).join(' ');
+    const line=ws=>ws.map(w=>`<span class="tk ${g.ok[k++]?'ok':'miss'}">${esc(w)}</span>`).join(' ').replace(/ (<span class="tk [a-z]+">[,.;:!?)]<\/span>)/g,'$1');
     rollEl.querySelector('#rres').innerHTML=`<div class="reveal"><div class="big">${g.pct}%<small> · ${g.hit}/${g.total} words · ${g.extras} extra</small></div>
       <div class="passage" style="margin-top:8px">${rollWords(r).map(([l,ls])=>`<div><b style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2)">${l}</b>${ls.map((ws,i)=>`<div>${l==='Members'?(i+1)+'. ':''}${line(ws)}</div>`).join('')}</div>`).join('')}</div>
       <div class="legend"><span class="tk ok">green</span> exact <span class="tk miss">red</span> missed</div>
@@ -709,18 +808,18 @@ function renderRollBoard(){
 }
 
 // ---------- error safety net ----------
-function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06j'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
+function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06k'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
   b.innerHTML='<span style="flex:1;word-break:break-word">Something broke: '+esc(msg)+'</span><button onclick="location.reload()" style="border:0;background:#fff;color:#B23A3A;border-radius:8px;padding:6px 10px;font:600 13px \'Public Sans\',sans-serif;cursor:pointer">Reload</button><button onclick="document.getElementById(\'errbar\').remove()" style="border:0;background:transparent;color:#fff;font-size:18px;cursor:pointer">×</button>'; }
 window.addEventListener('error', e=>{ showErr((e.message||'error')+' @'+(e.lineno||'?')); try{ render(); }catch(x){} });
 window.addEventListener('unhandledrejection', e=>{ showErr('async: '+((e.reason&&e.reason.message)||e.reason||'error')); });
 
 // ---------- render ----------
 function render(){
-  if(!['today','learn','roll','tasks','sigs','guide','facts','acct','log'].includes(mode)) mode='today';
+  if(!['today','learn','roll','quizzes','tasks','sigs','guide','facts','acct','log'].includes(mode)) mode='today';
   document.getElementById('count').textContent=`${pool().length} in this set · ${Object.keys(stars).length} starred · data v${S.version}`;
   const showChips = mode==='learn';
   chipsEl.hidden=!showChips; document.getElementById('count').hidden=!showChips;
-  for(const id of ['today','learn','roll','tasks','sigs','guide','facts','acct','log']) document.getElementById(id).hidden = mode!==id;
+  for(const id of ['today','learn','roll','quizzes','tasks','sigs','guide','facts','acct','log']) document.getElementById(id).hidden = mode!==id;
   const tab=tabOf(mode);
   document.querySelectorAll('[role=tab]').forEach(t=>t.setAttribute('aria-selected', t.dataset.tab===tab));
   document.getElementById('studysub').hidden = tab!=='study'; document.getElementById('infosub').hidden = tab!=='info'; document.getElementById('tasksub').hidden = tab!=='tasks';
@@ -728,6 +827,7 @@ function render(){
   if(mode==='learn'){ document.getElementById('o-smart').setAttribute('aria-pressed',fcSmart); document.getElementById('o-order').setAttribute('aria-pressed',!fcSmart); document.getElementById('v-cards').setAttribute('aria-pressed',view==='cards'); document.getElementById('v-grid').setAttribute('aria-pressed',view==='grid'); document.getElementById('v-dir').setAttribute('aria-pressed',view==='dir'); document.getElementById('cardwrap').hidden=view!=='cards'; gridEl.hidden=view!=='grid'; document.getElementById('dir').hidden=view!=='dir'; if(view==='cards') renderCard(); else if(view==='grid') renderGrid(); else renderDir(); }
   else if(mode==='today') renderToday();
   else if(mode==='roll') renderRoll();
+  else if(mode==='quizzes') renderQuizzes();
   else if(mode==='acct') renderAcct();
   else if(mode==='tasks') renderTasks();
   else if(mode==='sigs') renderSigs();
