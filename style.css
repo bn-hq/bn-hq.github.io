@@ -199,3 +199,4 @@ header small{color:var(--ink2);font-size:12px;text-transform:uppercase;letter-sp
 .pod b{display:block}
 .pod small{color:var(--ink2);font-size:12px}
 .pod .pts{font:800 22px "Bricolage Grotesque",sans-serif;font-variant-numeric:tabular-nums}
+.sigr .nxl{flex:none;min-height:44px;white-space:nowrap}
