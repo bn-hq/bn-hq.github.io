@@ -27,11 +27,10 @@ header small{color:var(--ink2);font-size:12px;text-transform:uppercase;letter-sp
 .who b{color:var(--ink)}
 .who button{border:0;background:none;color:var(--purple);font:600 12px "Public Sans",sans-serif;cursor:pointer;padding:0;text-decoration:underline}
 .tabs{display:flex;flex-wrap:wrap;gap:4px;margin-top:12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:4px}
-.tabs button{flex:1 1 calc(25% - 4px);min-width:0;border:0;background:transparent;color:var(--ink2);font:600 13px "Public Sans",sans-serif;padding:10px 4px;border-radius:9px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-@media (min-width:600px){.tabs button{flex:1 1 auto}}
+.tabs button{flex:1 1 0;min-width:0;min-height:44px;border:0;background:transparent;color:var(--ink2);font:600 13px "Public Sans",sans-serif;padding:10px 4px;border-radius:9px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tabs button[aria-selected="true"]{background:var(--purple);color:#fff}
 .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
-.chip{border:1px solid var(--line);background:var(--panel);color:var(--ink2);border-radius:999px;padding:5px 11px;font:600 12px "Public Sans",sans-serif;cursor:pointer}
+.chip{min-height:44px;border:1px solid var(--line);background:var(--panel);color:var(--ink2);border-radius:999px;padding:5px 11px;font:600 12px "Public Sans",sans-serif;cursor:pointer}
 .chip[aria-pressed="true"]{border-color:var(--gold);background:var(--gold2);color:var(--ink)}
 .count{color:var(--ink2);font-size:12px;margin-top:10px;font-variant-numeric:tabular-nums}
 .stage{margin-top:14px}
@@ -118,8 +117,8 @@ header small{color:var(--ink2);font-size:12px;text-transform:uppercase;letter-sp
 
 /* additions */
 [hidden]{display:none!important}
-.sub{display:flex;gap:6px;margin-top:12px}
-.sub button{border:1px solid var(--line);background:var(--panel);color:var(--ink2);border-radius:10px;padding:7px 12px;font:600 13px "Public Sans",sans-serif;cursor:pointer}
+.sub{display:flex;gap:6px;margin-top:12px;flex-wrap:wrap}
+.sub button{min-height:44px;border:1px solid var(--line);background:var(--panel);color:var(--ink2);border-radius:10px;padding:7px 12px;font:600 13px "Public Sans",sans-serif;cursor:pointer}
 .sub button[aria-pressed="true"]{background:var(--gold2);border-color:var(--gold);color:var(--ink)}
 .task{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-top:10px}
 .task .t{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
@@ -155,3 +154,18 @@ header small{color:var(--ink2);font-size:12px;text-transform:uppercase;letter-sp
 @media (prefers-reduced-motion:reduce){.rec{animation:none}}
 .legend{font-size:12px;color:var(--ink2);margin-top:8px}
 .legend span{padding:1px 6px;border-radius:4px;margin-right:6px}
+.lb td.hit{background:rgba(31,122,77,.18);color:var(--good);font-weight:600}
+#acct .lb tr>:first-child{position:sticky;left:0;background:var(--panel);white-space:nowrap}
+.sec{margin:22px 0 4px;font-size:18px}
+.sec small{color:var(--ink2);font:600 13px "Public Sans",sans-serif}
+.task .t{align-items:center}
+.task .ttl{flex:1;min-height:44px;border:0;background:none;padding:0;text-align:left;color:var(--ink);font:700 16px "Bricolage Grotesque","Public Sans",sans-serif;cursor:pointer}
+.task .ck{flex:none;display:flex;align-items:center;justify-content:center;width:44px;height:44px;margin:-6px 0 -6px -10px;cursor:pointer}
+.task .ck input{width:22px;height:22px;accent-color:var(--good);cursor:pointer}
+.task .x{flex:none;width:44px;height:44px;margin:-6px -10px -6px 0;border:0;background:none;color:var(--ink2);font-size:22px;cursor:pointer}
+.task [data-show]{min-height:44px;margin:-6px -4px -6px 0;border:0;background:none;text-align:right}
+.toast button{margin-left:8px;border:0;background:var(--gold);color:#1B1526;border-radius:999px;padding:6px 12px;font:700 13px "Public Sans",sans-serif;cursor:pointer;min-height:44px}
+#tq{font-size:16px;padding:12px;min-height:48px}
+.hi{margin:18px 0 0;font-size:26px}
+.sec.late{color:var(--bad)}
+#today .task .ttl{display:flex;align-items:center;cursor:default}

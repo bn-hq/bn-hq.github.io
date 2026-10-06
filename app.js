@@ -23,9 +23,10 @@ async function checkPhotoVersion(){ try{ const v=String(await dbGet('photosVersi
 async function refresh(){ try{ const vals=await Promise.all(KEYS.map(k=>dbGet(k))); const d={}; KEYS.forEach((k,i)=>d[k]=vals[i]); if(d && d.cards){ S=fromDb(d); } loaded=true; setStatus(''); }catch(e){ setStatus('Offline: could not reach the database ('+e.message+'). Showing last loaded data.'); loaded=true; } }
 
 function setStatus(t){ const el=document.getElementById('sync'); if(el){ el.textContent=t; el.hidden=!t; } }
-const FIELDS = [['cls','Pledge class'],['home','Hometown'],['major','Year / major'],['hs','High school'],['summer','Summer 2026'],['past','Past internships'],['clubs','Clubs'],['notes','Fun facts / openers'],['pets','Pets'],['siblings','Siblings'],['parents','Parents'],['grandparents','Grandparents'],['lineage','DSP lineage (big / little)']];
+const FIELDS = [['full','Full name (official)'],['cls','Pledge class'],['home','Hometown'],['major','Year / major'],['hs','High school'],['summer','Summer 2026'],['past','Past internships'],['clubs','Clubs'],['notes','Fun facts / openers'],['pets','Pets'],['siblings','Siblings'],['parents','Parents'],['grandparents','Grandparents'],['lineage','DSP lineage (big / little)']];
 let URIS = {};
-const IMG = s => URIS[s] || '';
+const initials = s => { const c=S.cards.find(x=>x.photo===s); const n=(c&&c.name)||s||'?'; return n.split(/[\s-]+/).filter(Boolean).slice(0,2).map(w=>w[0].toUpperCase()).join(''); };
+const IMG = s => URIS[s] || 'data:image/svg+xml,'+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#F1DFA8"/><text x="50" y="63" font-size="36" font-weight="700" text-anchor="middle" font-family="sans-serif" fill="#4B2A7B">${esc(initials(s))}</text></svg>`);
 const esc = s => String(s??'').replace(/[&<>"]/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
 const uid = () => Math.random().toString(36).slice(2,9);
 
@@ -33,7 +34,7 @@ let stars = {}; try { stars = JSON.parse(localStorage.getItem('bn-stars')||'{}')
 const saveStars = () => { try { localStorage.setItem('bn-stars', JSON.stringify(stars)); } catch(e){} };
 let me = ''; try { me = localStorage.getItem('bn-user')||''; } catch(e){}
 
-let filter='all', mode='learn', view='cards', qkind='fn', order=[], idx=0, flipped=false, editing=false;
+let filter='all', mode='today', view='cards', qkind='fn', order=[], idx=0, flipped=false, editing=false;
 let score={ok:0,n:0}, qi=0, answered=false;
 
 // ---------- capability ----------
@@ -77,7 +78,7 @@ function renderWho(){
   document.getElementById('chname').onclick=askName;
 }
 function askName(){
-  const names=S.cards.filter(c=>c.cls==='Beta Omega').map(c=>c.name);
+  const names=PC();
   const m=document.createElement('div'); m.className='modal';
   m.innerHTML=`<div><h2>Which pledge are you?</h2><p>Your name goes on every edit, task check-off, and recital score.</p><select id="nm" style="width:100%;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:10px;padding:10px;font:15px 'Public Sans',sans-serif"><option value="">Pick your name</option>${names.map(n=>`<option value="${esc(n)}" ${n===me?'selected':''}>${esc(n)}</option>`).join('')}</select><div class="ctrl"><button class="btn primary" id="ok">Continue</button></div></div>`;
   document.body.appendChild(m);
@@ -96,7 +97,13 @@ function shuffle(a){ for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.rando
 function resetOrder(){ order = pool(); idx = 0; flipped=false; editing=false; document.getElementById('editor').hidden=true; }
 const when = () => new Date().toISOString();
 const fmt = iso => { const d=new Date(iso); return d.toLocaleDateString(undefined,{month:'short',day:'numeric'})+' '+d.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}); };
-const PC = () => S.cards.filter(c=>c.cls==='Beta Omega').map(c=>c.name);
+const PC = () => (SEED.roster||[]).map(r=>r.name);
+const PNUM = n => { const r=(SEED.roster||[]).find(x=>x.name===n); return r?r.n:''; };
+const today = () => { const d=new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); };
+const addDays = (iso,k) => { const d=new Date(iso+'T12:00:00'); d.setDate(d.getDate()+k); return d.toISOString().slice(0,10); };
+const dayLabel = iso => { const t=today(); if(iso===t) return 'Today'; if(iso===addDays(t,1)) return 'Tomorrow'; return new Date(iso+'T12:00:00').toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'}); };
+const isFor = (t,n) => !t.who || !t.who.length || t.who.includes(n);
+const isDone = (t,n) => !!(t.done||{})[n];
 
 // ---------- chips / tabs ----------
 const chipsEl = document.getElementById('chips');
@@ -106,11 +113,20 @@ function renderChips(){
   chipsEl.innerHTML = items.map(([k,l])=>`<button class="chip" data-f="${esc(k)}" aria-pressed="${filter===k}">${esc(l)}</button>`).join('');
 }
 chipsEl.addEventListener('click', e=>{ const b=e.target.closest('.chip'); if(!b) return; filter=b.dataset.f; renderChips(); resetOrder(); if(mode==='quiz'){ saveDrill(); startDrill(); } render(); });
+const STUDY=['learn','quiz','roll','recite'], INFO=['guide','facts','log'];
+let lastStudy='learn', lastInfo='guide'; try{ const v=JSON.parse(localStorage.getItem('bn-sub')||'{}'); if(STUDY.includes(v.s)) lastStudy=v.s; if(INFO.includes(v.i)) lastInfo=v.i; }catch(e){}
+const tabOf = m => STUDY.includes(m)?'study':INFO.includes(m)?'info':m;
+function setMode(m){
+  if(mode==='quiz') saveDrill(); resetOrder(); stopRec(); mode=m;
+  if(STUDY.includes(m)) lastStudy=m; if(INFO.includes(m)) lastInfo=m; try{ localStorage.setItem('bn-sub',JSON.stringify({s:lastStudy,i:lastInfo})); }catch(e){}
+  if(mode==='quiz') startDrill(); render(); window.scrollTo({top:0});
+  refresh().then(()=>{ order=order.map(c=>S.cards.find(x=>x.photo===c.photo)||c); if(mode!=='learn'&&mode!=='quiz') render(); });
+}
 document.querySelector('.tabs').addEventListener('click', e=>{
-  const b=e.target.closest('[role=tab]'); if(!b) return;
-  document.querySelectorAll('[role=tab]').forEach(t=>t.setAttribute('aria-selected', t===b));
-  if(mode==='quiz') saveDrill(); resetOrder(); stopRec(); mode=b.dataset.mode; if(mode==='quiz') startDrill(); render(); refresh().then(()=>{ order=order.map(c=>S.cards.find(x=>x.photo===c.photo)||c); if(mode!=='learn'&&mode!=='quiz') render(); });
+  const b=e.target.closest('[role=tab]'); if(!b) return; const t=b.dataset.tab;
+  setMode(t==='study'?lastStudy:t==='info'?lastInfo:t);
 });
+for(const id of ['studysub','infosub']) document.getElementById(id).addEventListener('click', e=>{ const b=e.target.closest('[data-m]'); if(b) setMode(b.dataset.m); });
 document.getElementById('v-cards').onclick=()=>{ view='cards'; render(); };
 document.getElementById('v-grid').onclick=()=>{ view='grid'; render(); };
 document.getElementById('v-dir').onclick=()=>{ view='dir'; render(); setTimeout(()=>document.getElementById('dirq').focus(),50); };
@@ -238,7 +254,7 @@ function renderDir(){
 
 let dirOpen=null, dirEdit=false;
 function openInDir(photo, edit){
-  dirOpen=photo; dirEdit=!!edit; view='dir'; mode='learn'; document.querySelectorAll('[role=tab]').forEach(x=>x.setAttribute('aria-selected',x.dataset.mode==='learn'));
+  dirOpen=photo; dirEdit=!!edit; view='dir'; mode='learn'; lastStudy='learn';
   render(); const c=S.cards.find(x=>x.photo===photo); document.getElementById('dirq').value=c?c.name:''; renderDir();
   const el=document.getElementById('dirdetail'); if(el) el.scrollIntoView({block:'start',behavior:'smooth'});
 }
@@ -305,7 +321,7 @@ function renderRecite(){
     <div id="result"></div>
     <div class="editor" style="margin-top:14px"><h2>Scoreboard · ${esc(p.title)}</h2>${best!==null?`<div class="status">Your best: <b>${best}%</b> over ${mine.length} logged attempt${mine.length===1?'':'s'}</div>`:'<div class="status">No attempts yet. Every Check is logged.</div>'}
       <table class="lb"><tr><th>Pledge</th><th class="n">Best</th><th class="n">Attempts</th><th>Last</th></tr>${PC().map(n=>{ const rs=S.recitals.filter(r=>r.who===n&&r.passage===p.id); const b=rs.length?Math.max(...rs.map(r=>r.pct)):null; return `<tr><td>${esc(n)}</td><td class="n">${b===null?'—':b+'%'}</td><td class="n">${rs.length}</td><td>${rs.length?fmt(rs[0].at):'—'}</td></tr>`; }).join('')}</table>
-      <div class="status">Names here come from the Beta Omega cards, so sign in with the exact name on your card to show up.</div></div>`;
+      <div class="status">Names come from the Beta Omega roster.</div></div>`;
   recEl.querySelectorAll('[data-pi]').forEach(b=>b.onclick=()=>{ stopRec(); pIdx=+b.dataset.pi; heardFinal=heardInterim=''; renderRecite(); });
   recEl.querySelector('#hideP').onclick=()=>{ hidePassage=!hidePassage; renderRecite(); };
   recEl.querySelector('#mMic').onclick=()=>{ recMode='mic'; renderRecite(); };
@@ -345,41 +361,117 @@ function renderRecite(){
 
 // ---------- tasks ----------
 const tasksEl=document.getElementById('tasks');
+const WDAYS=['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+const dow = iso => new Date(iso+'T12:00:00').getDay();
+const dueText = iso => { if(!iso) return ''; const t=today(); if(iso===t) return 'Today'; if(iso===addDays(t,1)) return 'Tomorrow'; return new Date(iso+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}).replace(',',''); };
+const first = n => String(n).split(' ')[0];
+const whoText = who => who&&who.length ? who.map(n=>`#${PNUM(n)} ${first(n)}`).join(', ') : 'Whole class';
+function atWho(t){
+  t=t.toLowerCase().replace(/[^a-z0-9-]/g,''); const R=SEED.roster||[];
+  if(t==='me') return me||null;
+  if(/^\d+$/.test(t)){ const r=R.find(x=>x.n===+t); return r?r.name:null; }
+  const hits=R.filter(x=>x.name.toLowerCase().split(' ')[0].startsWith(t)); return t&&hits.length===1?hits[0].name:null;
+}
+function parseDue(ws, base){
+  // reads a date phrase off the end of ws; returns {due, n: words used} or null
+  const L=ws.map(w=>w.toLowerCase().replace(/[.,!]+$/,'')), k=L.length, w=L[k-1]; if(!k) return null; let r=null;
+  if(k>=3 && L[k-3]==='in' && /^\d+$/.test(L[k-2]) && /^days?$/.test(w)) r={due:addDays(base,+L[k-2]),n:3};
+  else if(w==='today') r={due:base,n:1};
+  else if(/^(tmr|tmrw|tomorrow)$/.test(w)) r={due:addDays(base,1),n:1};
+  else if(w.length>=3 && WDAYS.some(d=>d.startsWith(w))){ const i=WDAYS.findIndex(d=>d.startsWith(w)); r={due:addDays(base,((i-dow(base)+7)%7)||7),n:1}; }
+  else { const m=w.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2}|\d{4}))?$/); if(m&&+m[1]>=1&&+m[1]<=12&&+m[2]>=1&&+m[2]<=31){ let y=m[3]?(m[3].length===2?2000+ +m[3]:+m[3]):+base.slice(0,4); const iso=(y,mo,d)=>`${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`; let d=iso(y,+m[1],+m[2]); if(!m[3]&&d<addDays(base,-182)) d=iso(y+1,+m[1],+m[2]); r={due:d,n:1}; } }
+  if(r && k>r.n && L[k-r.n-1]==='due') r.n++;
+  return r;
+}
+function parseTask(line, base){
+  base=base||today(); const who=[], bad=[], rest=[];
+  for(const w of String(line).replace(/^\s*([-*•]|\d+[.)])\s+/,'').trim().split(/\s+/)){ if(/^@\S+/.test(w)){ const n=atWho(w.slice(1)); if(n){ if(!who.includes(n)) who.push(n); } else bad.push(w); } else if(w) rest.push(w); }
+  const d=parseDue(rest, base); if(d) rest.splice(rest.length-d.n);
+  return {title:rest.join(' '), who, due:d?d.due:addDays(base,1), bad};
+}
+const previewText = p => p.bad.length ? `Unknown: ${p.bad.join(' ')} (use @number, @first name or @me)` : `For: ${whoText(p.who)} · Due ${dueText(p.due)}`;
+const newTask = p => Object.assign({id:uid(),title:p.title,due:p.due,notes:'',by:me,at:when(),done:{}}, p.who.length?{who:p.who}:{});
+async function addTasks(ps){
+  const ok=await commit({who:me,at:when(),card:'Tasks',changes:ps.map(p=>({field:'Added task',from:'',to:p.title+' ('+whoText(p.who)+', due '+p.due+')'}))}, st=>{ for(const p of ps) st.tasks.push(newTask(p)); });
+  if(ok){ tDraft=''; render(); } return ok;
+}
+let tDraft='', tEdit=null, tWho=[];
+function undoToast(text, onUndo){
+  document.querySelectorAll('.toast').forEach(x=>x.remove()); const d=document.createElement('div'); d.className='toast'; d.innerHTML=`${esc(text)} <button>Undo</button>`; document.body.appendChild(d);
+  const t=setTimeout(()=>d.remove(),5000); d.querySelector('button').onclick=()=>{ clearTimeout(t); d.remove(); onUndo(); };
+}
+function taskHtml(t){
+  const as=t.who&&t.who.length?t.who:PC(), n=as.filter(x=>isDone(t,x)).length, mine=!!me&&isFor(t,me), meDone=isDone(t,me);
+  const late=t.due&&t.due<today()&&(mine?!meDone:n<as.length);
+  if(tEdit===t.id) return `<div class="task" data-id="${esc(t.id)}"><div class="field"><label>Task</label><input id="et" value="${esc(t.title)}"></div>
+    <div class="field"><label>Due</label><input id="ed" type="date" value="${esc(t.due||'')}"></div>
+    <div class="field"><label>Who</label><div class="chips" style="margin-top:0"><button class="chip" data-ew="" aria-pressed="${!tWho.length}">Whole class</button>${(SEED.roster||[]).map(r=>`<button class="chip" data-ew="${esc(r.name)}" aria-pressed="${tWho.includes(r.name)}">#${r.n} ${esc(first(r.name))}</button>`).join('')}</div></div>
+    <div class="field"><label>Notes</label><textarea id="en">${esc(t.notes||'')}</textarea></div>
+    <div class="ctrl"><button class="btn" id="ecancel">Cancel</button><button class="btn primary" id="esave">Save</button></div></div>`;
+  return `<div class="task ${(mine?meDone:n>=as.length)?'done':''}" data-id="${esc(t.id)}"><div class="t">${mine?`<label class="ck"><input type="checkbox" data-tog ${meDone?'checked':''} aria-label="Mark done"></label>`:''}<button class="ttl" data-edit>${esc(t.title)}</button><button class="x" data-del aria-label="Delete task">×</button></div>
+    ${t.notes?`<div class="notes">${esc(t.notes)}</div>`:''}
+    <div class="bar"><i style="width:${Math.round(100*n/as.length)}%"></i></div>
+    <div class="meta"><span class="due ${late?'late':''}">${late?'Overdue · ':'Due '}${esc(dueText(t.due))}</span><button class="small" data-show aria-label="Who's done">${n}/${as.length} done · ${esc(whoText(t.who))} ▾</button></div>
+    <div class="who" data-who hidden>${as.map(x=>`<span class="${isDone(t,x)?'':'no'}">${isDone(t,x)?'✓ ':''}${esc(first(x))}</span>`).join('')}</div></div>`;
+}
+function bindTasks(el, rerender){
+  const T=id=>S.tasks.find(x=>x.id===id), idOf=b=>b.closest('[data-id]').dataset.id;
+  el.querySelectorAll('[data-tog]').forEach(b=>b.onchange=async()=>{ if(!me){askName();return;} const t=T(idOf(b)), was=isDone(t,me); b.disabled=true;
+    await commit({who:me,at:when(),card:'Tasks',changes:[{field:t.title,from:was?'done':'not done',to:was?'not done':'done'}]},st=>{ const x=st.tasks.find(y=>y.id===t.id); x.done=x.done||{}; if(was) delete x.done[me]; else x.done[me]=when(); }); rerender(); });
+  el.querySelectorAll('[data-show]').forEach(b=>b.onclick=()=>{ const w=b.closest('.task').querySelector('[data-who]'); w.hidden=!w.hidden; });
+  el.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>{ const t=T(idOf(b)); tEdit=t.id; tWho=(t.who||[]).slice(); rerender(); const i=el.querySelector('#et'); if(i){ i.focus(); i.setSelectionRange(i.value.length,i.value.length); } });
+  el.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{ const t=T(idOf(b)), keep=Object.assign({},t); delete keep._k;
+    const ok=await commit({who:me,at:when(),card:'Tasks',changes:[{field:'Deleted task',from:t.title,to:''}]},st=>{ st.tasks=st.tasks.filter(x=>x.id!==t.id); }); rerender();
+    if(ok) undoToast('Deleted "'+t.title+'"', async()=>{ await commit({who:me,at:when(),card:'Tasks',changes:[{field:'Restored task',from:'',to:t.title}]},st=>{ st.tasks.push(keep); }); rerender(); }); });
+  const ed=el.querySelector('[data-id] #et'); if(!ed) return;
+  el.querySelectorAll('[data-ew]').forEach(b=>b.onclick=()=>{ const n=b.dataset.ew; if(!n) tWho=[]; else tWho=tWho.includes(n)?tWho.filter(x=>x!==n):tWho.concat(n);
+    el.querySelectorAll('[data-ew]').forEach(c=>c.setAttribute('aria-pressed', c.dataset.ew ? tWho.includes(c.dataset.ew) : !tWho.length)); });
+  const save=async()=>{ const t=T(tEdit); if(!t){ tEdit=null; rerender(); return; } const title=ed.value.trim(), due=el.querySelector('#ed').value, notes=el.querySelector('#en').value.trim(); if(!title){ ed.focus(); return; }
+    const who=(SEED.roster||[]).map(r=>r.name).filter(n=>tWho.includes(n)), ch=[];
+    if(title!==t.title) ch.push({field:'Task',from:t.title,to:title}); if(due!==(t.due||'')) ch.push({field:t.title+' · due',from:t.due||'',to:due}); if(notes!==(t.notes||'')) ch.push({field:t.title+' · notes',from:t.notes||'',to:notes});
+    if(whoText(who)!==whoText(t.who)) ch.push({field:t.title+' · who',from:whoText(t.who),to:whoText(who)});
+    if(ch.length){ const ok=await commit({who:me,at:when(),card:'Tasks',changes:ch},st=>{ const x=st.tasks.find(y=>y.id===t.id); Object.assign(x,{title,due,notes}); if(who.length) x.who=who; else delete x.who; }); if(!ok) return; }
+    tEdit=null; rerender(); };
+  el.querySelector('#esave').onclick=save; el.querySelector('#ecancel').onclick=()=>{ tEdit=null; rerender(); };
+  ed.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); save(); } if(e.key==='Escape'){ tEdit=null; rerender(); } };
+}
 function renderTasks(){
-  const pc=PC(); const today=new Date().toISOString().slice(0,10);
-  const list=S.tasks.slice().sort((a,b)=>(a.due||'9999')<(b.due||'9999')?-1:1);
-  tasksEl.innerHTML=`<div class="editor" style="margin-top:12px"><h2>Add a task</h2>
-      <div class="field"><label>Task</label><input id="tt" placeholder="e.g. Get 5 brother signatures"></div>
-      <div class="field"><label>Due</label><input id="td" type="date"></div>
-      <div class="field"><label>Notes</label><textarea id="tn" placeholder="details, where, who to ask"></textarea></div>
-      <div class="ctrl"><button class="btn primary" id="tadd">Add for the whole PC</button></div></div>
-    ${list.length?list.map(t=>{ const done=Object.keys(t.done||{}); const n=done.length, total=pc.length||13; const meDone=!!(t.done||{})[me]; const late=t.due&&t.due<today&&n<total;
-      return `<div class="task ${n>=total?'done':''}"><div class="t"><h3>${esc(t.title)}</h3><span class="due ${late?'late':''}">${t.due?'due '+t.due:''}</span></div>${t.notes?`<div class="notes">${esc(t.notes)}</div>`:''}
-      <div class="bar"><i style="width:${Math.round(100*n/total)}%"></i></div>
-      <div class="meta"><span>${n} / ${total} done · added by ${esc(t.by)}</span><span><button class="small" data-tog="${t.id}">${meDone?'Undo mine':'✓ Mark me done'}</button> <button class="small" data-show="${t.id}">Who</button> <button class="small" data-del="${t.id}">Delete</button></span></div>
-      <div class="who" data-who="${t.id}" hidden>${pc.map(n=>`<span class="${(t.done||{})[n]?'':'no'}">${esc(n.split(' ')[0])}</span>`).join('')}${done.filter(d=>!pc.includes(d)).map(d=>`<span>${esc(d)}</span>`).join('')}</div></div>`; }).join(''):'<div class="reveal" style="margin-top:12px">No tasks yet. Add the first one.</div>'}`;
-  tasksEl.querySelector('#tadd').onclick=async()=>{ const title=tasksEl.querySelector('#tt').value.trim(), due=tasksEl.querySelector('#td').value, notes=tasksEl.querySelector('#tn').value.trim(); if(!title) return; const ok=await commit({who:me,at:when(),card:'Tasks',changes:[{field:'Added task',from:'',to:title+(due?' (due '+due+')':'')}]},st=>st.tasks.push({id:uid(),title,due,notes,by:me,at:when(),done:{}})); if(ok) renderTasks(); };
-  tasksEl.querySelectorAll('[data-tog]').forEach(b=>b.onclick=async()=>{ if(!me){askName();return;} const t=S.tasks.find(x=>x.id===b.dataset.tog); const was=!!(t.done||{})[me]; const ok=await commit({who:me,at:when(),card:'Tasks',changes:[{field:t.title,from:was?'done':'not done',to:was?'not done':'done'}]},st=>{ const x=st.tasks.find(y=>y.id===t.id); x.done=x.done||{}; if(was) delete x.done[me]; else x.done[me]=when(); }); if(ok) renderTasks(); });
-  tasksEl.querySelectorAll('[data-show]').forEach(b=>b.onclick=()=>{ const w=tasksEl.querySelector(`[data-who="${b.dataset.show}"]`); w.hidden=!w.hidden; });
-  tasksEl.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{ const t=S.tasks.find(x=>x.id===b.dataset.del); if(!confirm('Delete "'+t.title+'" for everyone?')) return; const ok=await commit({who:me,at:when(),card:'Tasks',changes:[{field:'Deleted task',from:t.title,to:''}]},st=>{ st.tasks=st.tasks.filter(x=>x.id!==t.id); }); if(ok) renderTasks(); });
+  const byDue=(a,b)=>(a.due||'9999')<(b.due||'9999')?-1:(a.due||'9999')>(b.due||'9999')?1:0;
+  const L=S.tasks.slice().sort(byDue), mine=L.filter(t=>me&&(t.who||[]).includes(me)), all=L.filter(t=>!(t.who||[]).length), other=L.filter(t=>(t.who||[]).length&&!(t.who||[]).includes(me));
+  const sec=(h,ts,empty)=>ts.length||empty?`<h3 class="sec">${h} <small>${ts.length}</small></h3>${ts.map(taskHtml).join('')||`<div class="reveal">${empty}</div>`}`:'';
+  const focused=document.activeElement&&document.activeElement.id==='tq';
+  tasksEl.innerHTML=`<div class="field" style="margin-top:14px"><input id="tq" placeholder="Add a task…" autocomplete="off" enterkeyhint="done" value="${esc(tDraft)}"><div class="status" id="tprev">${tDraft.trim()?esc(previewText(parseTask(tDraft))):'@4 or @Tim to assign · fri, 10/12, in 3 days to set a due date · Enter to add'}</div></div>
+    ${sec('Mine',mine,'Nothing assigned just to you.')}${sec('Whole class',all,'No class tasks yet.')}${sec('Assigned to others',other)}`;
+  const q=tasksEl.querySelector('#tq'), pv=tasksEl.querySelector('#tprev');
+  if(focused){ q.focus(); q.setSelectionRange(q.value.length,q.value.length); }
+  q.oninput=()=>{ tDraft=q.value; pv.textContent=tDraft.trim()?previewText(parseTask(tDraft)):''; };
+  q.onkeydown=async e=>{ if(e.key!=='Enter') return; e.preventDefault(); const p=parseTask(q.value); if(p.bad.length){ toast(previewText(p)); return; } if(!p.title) return; q.disabled=true; if(!await addTasks([p])) q.disabled=false; };
+  q.onpaste=async e=>{ const lines=(e.clipboardData||window.clipboardData).getData('text').split(/\r?\n/).map(x=>x.trim()).filter(Boolean); if(lines.length<2) return; e.preventDefault();
+    const ps=lines.map(l=>parseTask(l)).filter(p=>p.title); const bad=ps.filter(p=>p.bad.length);
+    if(!confirm(`Add ${ps.length} tasks?\n\n`+ps.map(p=>`• ${p.title} (${previewText(p)})`).join('\n')+(bad.length?`\n\n${bad.length} line(s) have unknown @names; those are ignored.`:''))) return;
+    ps.forEach(p=>p.bad=[]); await addTasks(ps); };
+  bindTasks(tasksEl, renderTasks);
 }
 
 // ---------- accountability ----------
 const acctEl=document.getElementById('acct');
 function renderAcct(){
   const pc=PC(); const total=S.cards.length; const P=S.passages;
+  const solidOf=n=>Object.values(S.drill[n]||{}).filter(x=>x.last==='ok'&&(x.streak||0)>=2).length;
   const rows=pc.map(n=>{
-    const d=S.drill[n]||{}; const rated=Object.values(d).filter(x=>x.n); const avgr=rated.length?(rated.reduce((a,x)=>a+x.sum/x.n,0)/rated.length).toFixed(1):'—'; const solid=Object.values(d).filter(x=>x.last==='ok'&&(x.streak||0)>=2).length; const known=Object.values(d).filter(x=>x.last==='ok').length; const part=Object.values(d).filter(x=>x.last==='some').length; const drilled=Object.keys(d).length;
-    const bests=P.map(p=>{ const rs=S.recitals.filter(r=>r.who===n&&r.passage===p.id); return rs.length?Math.max(...rs.map(r=>r.pct)):null; });
-    const tries=S.recitals.filter(r=>r.who===n).length;
-    const tasksDone=S.tasks.filter(t=>(t.done||{})[n]).length;
-    const edits=S.log.filter(e=>e.who===n).length;
-    return {n,avgr,solid,known,part,drilled,bests,tries,tasksDone,edits};
-  }).sort((a,b)=>(b.solid*2+b.known+(b.bests[0]||0))-(a.solid*2+a.known+(a.bests[0]||0)));
+    const solid=solidOf(n);
+    const spell=ROLLS.map(r=>rollBest(n,r.cls));
+    const rec=P.map(p=>{ const rs=S.recitals.filter(r=>r.who===n&&r.passage===p.id); return rs.length?Math.max(...rs.map(r=>r.pct)):null; });
+    const mine=S.tasks.filter(t=>isFor(t,n)), done=mine.filter(t=>isDone(t,n)).length;
+    const hits=(solid>=total?1:0)+spell.concat(rec).filter(b=>b===100).length+(mine.length&&done===mine.length?1:0);
+    return {n,solid,spell,rec,done,assigned:mine.length,hits};
+  }).sort((a,b)=>b.hits-a.hits||b.solid-a.solid);
+  const pctCell=b=>`<td class="n${b===100?' hit':''}">${b===null?'—':b+'%'}</td>`;
   acctEl.innerHTML=`<div class="editor" style="margin-top:12px"><h2>Where everyone stands</h2>
-    <div class="status">Avg = mean of your 1-5 ratings across brothers you've drilled. Solid = rated 5 twice in a row. Known = last rating 4 or 5. Partial = 2 or 3. Recite = best score. Nothing here is private.</div>
-    <div style="overflow-x:auto"><table class="lb"><tr><th>Pledge</th><th class="n">Avg /5</th><th class="n">Solid</th><th class="n">Known</th><th class="n">Partial</th><th class="n">Drilled</th>${P.map(p=>`<th class="n">${esc(p.title)}</th>`).join('')}<th class="n">Tries</th><th class="n">Tasks</th><th class="n">Edits</th></tr>
-    ${rows.map(r=>`<tr><td>${esc(r.n)}${r.n===me?' <b>(you)</b>':''}</td><td class="n"><b>${r.avgr}</b></td><td class="n">${r.solid}/${total}</td><td class="n">${r.known}</td><td class="n">${r.part}</td><td class="n">${r.drilled}</td>${r.bests.map(b=>`<td class="n">${b===null?'—':b+'%'}</td>`).join('')}<td class="n">${r.tries}</td><td class="n">${r.tasksDone}/${S.tasks.length}</td><td class="n">${r.edits}</td></tr>`).join('')}</table></div></div>
+    <div class="status">Green = target hit. Faces = brothers rated 5 twice in a row. Spell and Recite = best score (target 100%). Tasks = done / assigned.</div>
+    <div style="overflow-x:auto"><table class="lb"><tr><th>Pledge</th><th class="n">Faces</th>${ROLLS.map(r=>`<th class="n">${esc(r.cls.replace('Beta ',''))}</th>`).join('')}${P.map(p=>`<th class="n">${esc(p.title.replace('Ideal ',''))}</th>`).join('')}<th class="n">Tasks</th></tr>
+    ${rows.map(r=>`<tr><td>${esc(r.n.split(' ')[0])}${r.n===me?' <b>(you)</b>':''}</td><td class="n${r.solid>=total?' hit':''}">${r.solid}/${total}</td>${r.spell.map(pctCell).join('')}${r.rec.map(pctCell).join('')}<td class="n${r.assigned&&r.done===r.assigned?' hit':''}">${r.done}/${r.assigned}</td></tr>`).join('')}</table></div>
+    <div class="status">Spell columns: Psi, Chi, Phi, Upsilon rolls. Recite columns: Purpose, Ideal Member, Ideal Chapter.</div></div>
     ${me&&S.drill[me]?`<div class="editor" style="margin-top:12px"><h2>Your weak spots</h2><div class="grid" style="margin-top:6px">${S.cards.filter(c=>{const x=S.drill[me][c.photo]; return x&&x.last!=='ok';}).map(c=>{const x=S.drill[me][c.photo]; return `<div class="tile"><img src="${IMG(c.photo)}" alt=""><div>${esc(c.name)}<small>${x.last==='miss'?'name wrong':'facts shaky'} · ${x.miss} wrong · ${x.some||0} partial</small></div></div>`;}).join('')||'<div class="status">No misses on record. Either you are cracked or you have not drilled.</div>'}</div></div>`:''}`;
 }
 
@@ -414,8 +506,79 @@ function renderLog(){
   logEl.innerHTML=`<div class="log">${S.log.length?S.log.map(e=>`<div class="entry"><div class="top"><span><b>${esc(e.who)}</b> · <b>${esc(e.card)}</b></span><span>${fmt(e.at)}</span></div>${e.changes.map(ch=>`<div class="diff"><span style="font-weight:600">${esc(ch.field)}</span>${ch.from?`<span class="from">${esc(ch.from)}</span>`:''}<span class="to">${esc(ch.to)||'(cleared)'}</span></div>`).join('')}</div>`).join(''):'<div class="reveal">No edits yet.</div>'}</div>`;
 }
 
+// ---------- today ----------
+const todayEl=document.getElementById('today');
+function renderToday(){
+  if(!me){ todayEl.innerHTML=`<div class="editor"><h2>Hi there</h2><div class="status">Pick your name to see your tasks.</div><div class="ctrl"><button class="btn primary" id="tpick">Pick your name</button></div></div>`; todayEl.querySelector('#tpick').onclick=askName; return; }
+  const t0=today(), t1=addDays(t0,1), open=S.tasks.filter(t=>isFor(t,me)&&!isDone(t,me)).sort((a,b)=>(a.due||'9999')<(b.due||'9999')?-1:1);
+  const now=open.filter(t=>t.due&&t.due<=t0).length, groups=[];
+  for(const t of open){ const g=!t.due?'No date':t.due<t0?'Overdue':t.due===t0?'Today':t.due===t1?'Tomorrow':dayLabel(t.due); const last=groups[groups.length-1]; if(last&&last[0]===g) last[1].push(t); else groups.push([g,[t]]); }
+  const solid=Object.values(S.drill[me]||{}).filter(x=>x.last==='ok'&&(x.streak||0)>=2).length;
+  const spell=ROLLS.filter(r=>rollBest(me,r.cls)===100).length;
+  const rec=S.passages.filter(p=>S.recitals.some(r=>r.who===me&&r.passage===p.id&&r.pct===100)).length;
+  todayEl.innerHTML=`<h2 class="hi">Hi ${esc(first(me))}</h2><div class="status">${now?`<b>${now}</b> task${now===1?'':'s'} due today or overdue.`:'Nothing due today.'}</div>
+    <div class="editor"><h2>Your progress</h2><div class="status">Faces solid <b>${solid}/${S.cards.length}</b> · Rolls spelled 100% <b>${spell}/${ROLLS.length}</b> · Recitals 100% <b>${rec}/${S.passages.length}</b></div>
+      <div class="ctrl"><button class="btn primary" id="tdrill">Start drill</button></div></div>
+    ${groups.length?groups.map(([g,ts])=>`<h3 class="sec ${g==='Overdue'?'late':''}">${esc(g)} <small>${ts.length}</small></h3>${ts.map(t=>`<div class="task" data-id="${esc(t.id)}"><div class="t"><label class="ck"><input type="checkbox" data-tog aria-label="Mark done"></label><span class="ttl">${esc(t.title)}</span><span class="due ${g==='Overdue'?'late':''}">${esc(dueText(t.due))}</span></div></div>`).join('')}`).join('')
+      :`<div class="reveal" style="margin-top:14px;text-align:center"><div class="big">Nothing due 🎉</div><div class="ctrl"><button class="btn" id="tstudy">Go to Study</button></div></div>`}
+`;
+  todayEl.querySelector('#tdrill').onclick=()=>{ filter='all'; renderChips(); setMode('quiz'); };
+  const st=todayEl.querySelector('#tstudy'); if(st) st.onclick=()=>setMode(lastStudy);
+  bindTasks(todayEl, renderToday);
+}
+
+// ---------- spell (roll call) ----------
+const rollEl=document.getElementById('roll');
+const ROLLS=SEED.rolls||[];
+let rIdx=0, rDraft={};
+const nw = w => w.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
+const words = t => String(t||'').replace(/\*/g,'').split(/[\s\-]+/).filter(w=>nw(w));
+function rollWords(r){ return [['Class',[r.cls]],['VPPE',[r.vppe]],['Members',r.members]].map(([l,xs])=>[l,xs.map(x=>words(x))]); }
+function gradeRoll(r, typed){
+  // exact (normalized) LCS between expected and typed words, order matters
+  const E=rollWords(r).flatMap(([,ls])=>ls.flat()), T=words(typed), m=E.length, n=T.length, a=E.map(nw), b=T.map(nw);
+  const dp=Array.from({length:m+1},()=>new Int32Array(n+1));
+  for(let i=m-1;i>=0;i--) for(let j=n-1;j>=0;j--) dp[i][j]= a[i]===b[j] ? dp[i+1][j+1]+1 : Math.max(dp[i+1][j],dp[i][j+1]);
+  const ok=new Array(m).fill(false); let i=0,j=0; while(i<m&&j<n){ if(a[i]===b[j]){ ok[i]=true; i++; j++; } else if(dp[i+1][j]>=dp[i][j+1]) i++; else j++; }
+  const hit=ok.filter(Boolean).length, extras=n-hit;
+  return {ok, hit, total:m, extras, pct:Math.max(0, Math.floor(100*hit/m - 0.5*extras))};
+}
+const rollBest = (n,cls) => { const rs=S.recitals.filter(x=>x.who===n&&x.passage==='roll:'+cls); return rs.length?Math.max(...rs.map(x=>x.pct)):null; };
+function renderRoll(){
+  const r=ROLLS[rIdx]; if(!r){ rollEl.innerHTML='<div class="reveal">No rolls loaded.</div>'; return; }
+  const d=rDraft[r.cls]=rDraft[r.cls]||{c:'',v:'',m:''};
+  rollEl.innerHTML=`<div class="chips">${ROLLS.map((x,i)=>{ const b=rollBest(me,x.cls); return `<button class="chip" data-ri="${i}" aria-pressed="${i===rIdx}">${esc(x.cls)}${b===null?'':' · '+b+'%'}</button>`; }).join('')}</div>
+    <div class="editor"><h2>Spell the ${esc(r.cls)} roll</h2>
+      <div class="field"><label>Class name</label><input id="rc" autocomplete="off" autocapitalize="words" value="${esc(d.c)}"></div>
+      <div class="field"><label>VPPE</label><input id="rv" autocomplete="off" autocapitalize="words" value="${esc(d.v)}"></div>
+      <div class="field"><label>Members (one per line, in order)</label><textarea id="rm" autocapitalize="words" style="min-height:220px">${esc(d.m)}</textarea></div>
+      <div class="ctrl"><button class="btn primary" id="rcheck">Check it</button></div>
+      <div class="status">Full official names, in order. Capitals and accents don't matter. Target: 100% on all four classes.</div></div>
+    <div id="rres"></div><div id="rboard"></div>`;
+  rollEl.querySelectorAll('[data-ri]').forEach(b=>b.onclick=()=>{ rIdx=+b.dataset.ri; renderRoll(); });
+  for(const [id,k] of [['rc','c'],['rv','v'],['rm','m']]) rollEl.querySelector('#'+id).oninput=e=>{ d[k]=e.target.value; };
+  rollEl.querySelector('#rcheck').onclick=async()=>{
+    const typed=[d.c,d.v,d.m].join('\n'); if(!words(typed).length){ toast('Type the roll first.'); return; }
+    const g=gradeRoll(r,typed); let k=0;
+    const line=ws=>ws.map(w=>`<span class="tk ${g.ok[k++]?'ok':'miss'}">${esc(w)}</span>`).join(' ');
+    rollEl.querySelector('#rres').innerHTML=`<div class="reveal"><div class="big">${g.pct}%<small> · ${g.hit}/${g.total} words · ${g.extras} extra</small></div>
+      <div class="passage" style="margin-top:8px">${rollWords(r).map(([l,ls])=>`<div><b style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2)">${l}</b>${ls.map((ws,i)=>`<div>${l==='Members'?(i+1)+'. ':''}${line(ws)}</div>`).join('')}</div>`).join('')}</div>
+      <div class="legend"><span class="tk ok">green</span> exact <span class="tk miss">red</span> missed</div>
+      <div class="status" id="rlog">Logging this attempt…</div></div>`;
+    const ok=await commit(null, st=>{ st.recitals.unshift({who:me,at:when(),passage:'roll:'+r.cls,pct:g.pct}); });
+    const ls=rollEl.querySelector('#rlog'); if(ls) ls.textContent = ok ? 'Logged ('+g.pct+'%).' : 'Not logged (see message).';
+    renderRollBoard(); rollEl.querySelectorAll('[data-ri]').forEach((b,i)=>{ const x=rollBest(me,ROLLS[i].cls); b.textContent=ROLLS[i].cls+(x===null?'':' · '+x+'%'); });
+  };
+  renderRollBoard();
+}
+function renderRollBoard(){
+  const r=ROLLS[rIdx], id='roll:'+r.cls, mine=S.recitals.filter(x=>x.who===me&&x.passage===id), best=rollBest(me,r.cls);
+  rollEl.querySelector('#rboard').innerHTML=`<div class="editor"><h2>Scoreboard · ${esc(r.cls)}</h2>${best!==null?`<div class="status">Your best: <b>${best}%</b> over ${mine.length} attempt${mine.length===1?'':'s'}</div>`:'<div class="status">No attempts yet. Every Check is logged.</div>'}
+    <table class="lb"><tr><th>Pledge</th><th class="n">Best</th><th class="n">Attempts</th></tr>${PC().map(n=>{ const b=rollBest(n,r.cls); return `<tr><td>${esc(n)}</td><td class="n${b===100?' hit':''}">${b===null?'—':b+'%'}</td><td class="n">${S.recitals.filter(x=>x.who===n&&x.passage===id).length}</td></tr>`; }).join('')}</table></div>`;
+}
+
 // ---------- error safety net ----------
-function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-09-18c'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
+function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06a'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
   b.innerHTML='<span style="flex:1;word-break:break-word">Something broke: '+esc(msg)+'</span><button onclick="location.reload()" style="border:0;background:#fff;color:#B23A3A;border-radius:8px;padding:6px 10px;font:600 13px \'Public Sans\',sans-serif;cursor:pointer">Reload</button><button onclick="document.getElementById(\'errbar\').remove()" style="border:0;background:transparent;color:#fff;font-size:18px;cursor:pointer">×</button>'; }
 window.addEventListener('error', e=>{ showErr((e.message||'error')+' @'+(e.lineno||'?')); try{ render(); }catch(x){} });
 window.addEventListener('unhandledrejection', e=>{ showErr('async: '+((e.reason&&e.reason.message)||e.reason||'error')); });
@@ -425,8 +588,14 @@ function render(){
   document.getElementById('count').textContent=`${pool().length} in this set · ${Object.keys(stars).length} starred · data v${S.version}`;
   const showChips = mode==='learn'||mode==='quiz';
   chipsEl.hidden=!showChips; document.getElementById('count').hidden=!showChips;
-  for(const id of ['learn','quiz','recite','tasks','guide','facts','acct','log']) document.getElementById(id).hidden = mode!==id;
+  for(const id of ['today','learn','quiz','roll','recite','tasks','guide','facts','acct','log']) document.getElementById(id).hidden = mode!==id;
+  const tab=tabOf(mode);
+  document.querySelectorAll('[role=tab]').forEach(t=>t.setAttribute('aria-selected', t.dataset.tab===tab));
+  document.getElementById('studysub').hidden = tab!=='study'; document.getElementById('infosub').hidden = tab!=='info';
+  document.querySelectorAll('#studysub [data-m],#infosub [data-m]').forEach(b=>b.setAttribute('aria-pressed', b.dataset.m===mode));
   if(mode==='learn'){ document.getElementById('v-cards').setAttribute('aria-pressed',view==='cards'); document.getElementById('v-grid').setAttribute('aria-pressed',view==='grid'); document.getElementById('v-dir').setAttribute('aria-pressed',view==='dir'); document.getElementById('cardwrap').hidden=view!=='cards'; gridEl.hidden=view!=='grid'; document.getElementById('dir').hidden=view!=='dir'; if(view==='cards') renderCard(); else if(view==='grid') renderGrid(); else renderDir(); }
+  else if(mode==='today') renderToday();
+  else if(mode==='roll') renderRoll();
   else if(mode==='quiz') renderQuiz();
   else if(mode==='acct') renderAcct();
   else if(mode==='recite') renderRecite();
@@ -437,4 +606,4 @@ function render(){
 }
 renderWho(); setStatus('Loading…');
 Promise.all([loadPhotos(),refresh()]).then(()=>{ renderChips(); resetOrder(); render(); if(!me) setTimeout(askName, 300); });
-setInterval(()=>{ if(document.visibilityState==='visible' && !editing && !recording && !dirEdit && mode!=='learn' && mode!=='quiz') refresh().then(()=>{ order=order.map(c=>S.cards.find(x=>x.photo===c.photo)||c); drun=drun.map(c=>S.cards.find(x=>x.photo===c.photo)||c); if(mode==='tasks'||mode==='acct'||mode==='log'||mode==='facts'||mode==='guide') render(); }); }, 30000);
+setInterval(()=>{ const ae=document.activeElement, typing=ae&&(ae.tagName==='TEXTAREA'||(ae.tagName==='INPUT'&&ae.type!=='checkbox')); if(document.visibilityState==='visible' && !typing && !tEdit && !editing && !recording && !dirEdit && mode!=='learn' && mode!=='quiz') refresh().then(()=>{ order=order.map(c=>S.cards.find(x=>x.photo===c.photo)||c); drun=drun.map(c=>S.cards.find(x=>x.photo===c.photo)||c); if(['today','tasks','acct','log','facts','guide'].includes(mode)) render(); }); }, 30000);
