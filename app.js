@@ -150,7 +150,7 @@ function renderChips(){
   chipsEl.innerHTML = items.map(([k,l])=>`<button class="chip" data-f="${esc(k)}" aria-pressed="${filter===k}" title="${esc(k==='starred'?'Starred':k)}">${esc(l)}</button>`).join('');
 }
 chipsEl.addEventListener('click', e=>{ const b=e.target.closest('.chip'); if(!b) return; filter=b.dataset.f; renderChips(); saveDrill(); resetOrder(); render(); });
-const STUDY=['learn','quizzes','roll'], INFO=['guide','facts','ideas','log'], TASKS=['tasks','sigs','dash'];
+const STUDY=['learn','quizzes','roll'], INFO=['guide','ideas','log'], TASKS=['tasks','sigs','dash'];
 let lastStudy='learn', lastInfo='guide', lastTasks='tasks'; try{ const v=JSON.parse(localStorage.getItem('bn-sub')||'{}'); if(STUDY.includes(v.s)) lastStudy=v.s; if(INFO.includes(v.i)) lastInfo=v.i; if(TASKS.includes(v.t)) lastTasks=v.t; }catch(e){}
 const tabOf = m => STUDY.includes(m)?'study':INFO.includes(m)?'info':TASKS.includes(m)?'tasks':m;
 function setMode(m){
@@ -963,13 +963,14 @@ function renderRollBoard(){
 }
 
 // ---------- error safety net ----------
-function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06y'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
+function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06z'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
   b.innerHTML='<span style="flex:1;word-break:break-word">Something broke: '+esc(msg)+'</span><button onclick="location.reload()" style="border:0;background:#fff;color:#B23A3A;border-radius:8px;padding:6px 10px;font:600 13px \'Public Sans\',sans-serif;cursor:pointer">Reload</button><button onclick="document.getElementById(\'errbar\').remove()" style="border:0;background:transparent;color:#fff;font-size:18px;cursor:pointer">×</button>'; }
 window.addEventListener('error', e=>{ showErr((e.message||'error')+' @'+(e.lineno||'?')); try{ render(); }catch(x){} });
 window.addEventListener('unhandledrejection', e=>{ showErr('async: '+((e.reason&&e.reason.message)||e.reason||'error')); });
 
 // ---------- render ----------
 function render(){
+  if(mode==='facts') mode='guide';
   if(!['today','learn','roll','quizzes','tasks','sigs','dash','guide','facts','ideas','acct','log'].includes(mode)) mode='today';
   const showChips = mode==='learn';
   chipsEl.hidden=!showChips;
