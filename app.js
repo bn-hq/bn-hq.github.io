@@ -88,13 +88,19 @@ function askName(){
 }
 
 // ---------- helpers ----------
+const CLASS_ORDER=['Beta Upsilon','Beta Phi','Beta Chi','Beta Psi','Beta Omega'];
+const clsRank = cls => { const i=CLASS_ORDER.findIndex(k=>String(cls||'').startsWith(k)); return i<0?99:i; };
+function rollIndex(c){
+  const r=(SEED.rolls||[]).find(x=>String(c.cls||'').startsWith(x.cls)); if(!r) return 999;
+  const f=String(c.full||'').trim(); if(f&&f===r.vppe) return 0; const i=r.members.findIndex(m=>m.replace(/^\*/,'')===f); return i<0?998:i+1;
+}
+const byRoll = (a,b) => clsRank(a.cls)-clsRank(b.cls) || rollIndex(a)-rollIndex(b) || a.name.localeCompare(b.name);
 function pool(){
-  if (filter==='starred') return S.cards.filter(c=>stars[c.photo]);
-  if (filter==='all') return S.cards.slice();
-  return S.cards.filter(c=>c.cls===filter);
+  const p = filter==='starred' ? S.cards.filter(c=>stars[c.photo]) : filter==='all' ? S.cards.slice() : S.cards.filter(c=>c.cls===filter);
+  return p.sort(byRoll);
 }
 function shuffle(a){ for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; }
-function resetOrder(){ order = pool(); idx = 0; flipped=false; editing=false; document.getElementById('editor').hidden=true; }
+function resetOrder(){ order = fcSmart&&me ? smartOrder(pool()) : pool(); idx = 0; flipped=false; editing=false; document.getElementById('editor').hidden=true; }
 const when = () => new Date().toISOString();
 const fmt = iso => { const d=new Date(iso); return d.toLocaleDateString(undefined,{month:'short',day:'numeric'})+' '+d.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}); };
 const PC = () => (SEED.roster||[]).map(r=>r.name);
@@ -109,19 +115,19 @@ const isDone = (t,n) => !!(t.done||{})[n];
 // ---------- chips / tabs ----------
 const chipsEl = document.getElementById('chips');
 function renderChips(){
-  const cls=[...new Set(S.cards.map(c=>c.cls))];
+  const cls=[...new Set(S.cards.map(c=>c.cls))].sort((a,b)=>clsRank(a)-clsRank(b)||a.localeCompare(b));
   const items=[['all',`All ${S.cards.length}`],...cls.map(k=>[k,k]),['starred','★ Starred']];
   chipsEl.innerHTML = items.map(([k,l])=>`<button class="chip" data-f="${esc(k)}" aria-pressed="${filter===k}">${esc(l)}</button>`).join('');
 }
-chipsEl.addEventListener('click', e=>{ const b=e.target.closest('.chip'); if(!b) return; filter=b.dataset.f; renderChips(); resetOrder(); if(mode==='quiz'){ saveDrill(); startDrill(); } render(); });
-const STUDY=['learn','quiz','roll'], INFO=['guide','facts','log'], TASKS=['tasks','sigs'];
+chipsEl.addEventListener('click', e=>{ const b=e.target.closest('.chip'); if(!b) return; filter=b.dataset.f; renderChips(); saveDrill(); resetOrder(); render(); });
+const STUDY=['learn','roll'], INFO=['guide','facts','log'], TASKS=['tasks','sigs'];
 let lastStudy='learn', lastInfo='guide', lastTasks='tasks'; try{ const v=JSON.parse(localStorage.getItem('bn-sub')||'{}'); if(STUDY.includes(v.s)) lastStudy=v.s; if(INFO.includes(v.i)) lastInfo=v.i; if(TASKS.includes(v.t)) lastTasks=v.t; }catch(e){}
 const tabOf = m => STUDY.includes(m)?'study':INFO.includes(m)?'info':TASKS.includes(m)?'tasks':m;
 function setMode(m){
-  if(mode==='quiz') saveDrill(); resetOrder(); mode=m;
+  if(mode==='learn'&&m!=='learn') saveDrill(); resetOrder(); mode=m;
   if(STUDY.includes(m)) lastStudy=m; if(INFO.includes(m)) lastInfo=m; if(TASKS.includes(m)) lastTasks=m; try{ localStorage.setItem('bn-sub',JSON.stringify({s:lastStudy,i:lastInfo,t:lastTasks})); }catch(e){}
-  if(mode==='quiz') startDrill(); render(); window.scrollTo({top:0});
-  refresh().then(()=>{ order=order.map(c=>S.cards.find(x=>x.photo===c.photo)||c); if(mode!=='learn'&&mode!=='quiz') render(); });
+  render(); window.scrollTo({top:0});
+  refresh().then(()=>{ order=order.map(c=>S.cards.find(x=>x.photo===c.photo)||c); if(mode!=='learn') render(); });
 }
 document.querySelector('.tabs').addEventListener('click', e=>{
   const b=e.target.closest('[role=tab]'); if(!b) return; const t=b.dataset.tab;
@@ -132,10 +138,6 @@ document.getElementById('v-cards').onclick=()=>{ view='cards'; render(); };
 document.getElementById('v-grid').onclick=()=>{ view='grid'; render(); };
 document.getElementById('v-dir').onclick=()=>{ view='dir'; render(); setTimeout(()=>document.getElementById('dirq').focus(),50); };
 document.getElementById('dirq').addEventListener('input',renderDir);
-document.getElementById('q-fn').onclick=()=>{ qkind='fn'; saveDrill(); startDrill(); render(); };
-document.getElementById('q-nf').onclick=()=>{ qkind='nf'; saveDrill(); startDrill(); render(); };
-document.getElementById('q-smart').onclick=()=>{ smart=!smart; document.getElementById('q-smart').setAttribute('aria-pressed',smart); saveDrill(); startDrill(); render(); };
-
 // ---------- learn ----------
 const cardEl=document.getElementById('card');
 function renderCard(){
@@ -144,12 +146,16 @@ function renderCard(){
   if(!flipped){
     cardEl.innerHTML=`<div class="front"><img src="${IMG(c.photo)}" alt="brother photo"><div class="hint">Tap to reveal · ${idx+1} / ${order.length}</div></div>`;
   } else {
-    const rows=FIELDS.map(([k,l])=>[l,c[k]]);
+    const rows=FIELDS.filter(([k])=>k!=='full').map(([k,l])=>[l,c[k]]);
     for(const [k,v] of Object.entries(c.extra||{})) rows.push([k,v]);
     rows.push(['LinkedIn', c.li?`<a href="https://www.linkedin.com/in/${esc(c.li)}/" target="_blank" rel="noopener">linkedin.com/in/${esc(c.li)}</a>`:'', true]);
-    cardEl.innerHTML=`<div class="back"><img src="${IMG(c.photo)}" alt=""><div><h2>${esc(c.name)}</h2>${c.alias?`<div class="alias">${esc(c.alias)}</div>`:''}<span class="tag">${esc(c.cls)}</span></div><div class="facts">${rows.map(([k,v,raw])=>`<div><b>${esc(k)}</b><span>${v?(raw?v:esc(v)):'<span class="empty">not filled in yet</span>'}</span></div>`).join('')}</div>${sigHtml(c)}</div>`;
+    cardEl.innerHTML=`<div class="back"><img src="${IMG(c.photo)}" alt=""><div><h2>${esc(c.name)}</h2>${c.full?`<div class="fullname"><small>Full name (official)</small>${esc(c.full)}</div>`:''}${c.alias?`<div class="alias">${esc(c.alias)}</div>`:''}<span class="tag">${esc(c.cls)}</span></div><div class="facts">${rows.map(([k,v,raw])=>`<div><b>${esc(k)}</b><span>${v?(raw?v:esc(v)):'<span class="empty">not filled in yet</span>'}</span></div>`).join('')}</div>${sigHtml(c)}</div>`;
     bindSig(cardEl, ()=>{ order=order.map(x=>S.cards.find(y=>y.photo===x.photo)||x); renderCard(); });
   }
+  const rt=document.getElementById('rate3'); rt.hidden=!flipped;
+  if(flipped) rt.innerHTML=[[1,"Didn't know"],[3,'Partly'],[5,'Knew it']].map(([r,l],i)=>`<button class="btn r${r}" data-rate="${r}"><b>${i+1}</b> ${l}</button>`).join('');
+  const p=pool(), solid=p.filter(x=>isSolid(recOf(x.photo))).length, rc=recOf(c.photo);
+  document.getElementById('fcprog').textContent = me ? `Solid ${solid}/${p.length} in this ${filter==='all'?'set':filter==='starred'?'starred set':'class'}${rc.r?` · last time: ${rc.r===5?'knew it':rc.r>=3?'partly':"didn't know"}`:' · new card'}` : 'Pick your name to save your progress.';
   const s=document.getElementById('star'); const on=!!stars[c.photo]; s.setAttribute('aria-pressed',on); s.textContent=on?'★ Starred':'☆ Star';
   document.getElementById('editor').hidden=true;
 }
@@ -159,10 +165,16 @@ cardEl.addEventListener('click', e=>{ if(e.target.closest('a,.sig')) return; e.p
 cardEl.addEventListener('keydown', e=>{ if(e.target!==cardEl) return; if(e.key===' '||e.key==='Enter'){e.preventDefault();flipped=!flipped;renderCard();} });
 document.getElementById('next').onpointerdown=e=>{ if(e.button) return; if(!order.length) return; idx=(idx+1)%order.length; flipped=false; editing=false; renderCard(); };
 document.getElementById('prev').onpointerdown=e=>{ if(e.button) return; if(!order.length) return; idx=(idx-1+order.length)%order.length; flipped=false; editing=false; renderCard(); };
-document.getElementById('shuffle').onclick=()=>{ shuffle(order); idx=0; flipped=false; editing=false; renderCard(); };
+document.getElementById('rate3').addEventListener('click', e=>{ const b=e.target.closest('[data-rate]'); if(b) rateCard(+b.dataset.rate); });
+const setSmart = v => { saveDrill(); fcSmart=v; try{ localStorage.setItem('bn-fc', v?'smart':'order'); }catch(e){} resetOrder(); render(); };
+document.getElementById('o-smart').onclick=()=>setSmart(true);
+document.getElementById('o-order').onclick=()=>setSmart(false);
 document.getElementById('star').onclick=()=>{ const c=order[idx]; if(!c) return; if(stars[c.photo]) delete stars[c.photo]; else stars[c.photo]=1; saveStars(); renderCard(); };
 document.getElementById('edit').onclick=()=>{ if(!order[idx]) return; if(!me){ askName(); return; } openInDir(order[idx].photo, true); };
-document.addEventListener('keydown', e=>{ if(mode!=='learn'||view!=='cards'||editing||['INPUT','TEXTAREA'].includes(e.target.tagName)) return; if(e.key==='ArrowRight') document.getElementById('next').onpointerdown({button:0}); if(e.key==='ArrowLeft') document.getElementById('prev').onpointerdown({button:0}); });
+document.addEventListener('keydown', e=>{ if(mode!=='learn'||view!=='cards'||editing||['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
+  if(e.key===' '&&e.target!==cardEl){ e.preventDefault(); flipped=!flipped; renderCard(); return; }
+  if(flipped&&'123'.includes(e.key)&&e.key){ rateCard([1,3,5][+e.key-1]); return; }
+  if(e.key==='ArrowRight') document.getElementById('next').onpointerdown({button:0}); if(e.key==='ArrowLeft') document.getElementById('prev').onpointerdown({button:0}); });
 
 // ---------- editor ----------
 function renderEditor(){ const ed=document.getElementById('editor'); ed.hidden=false; renderEditorInto(ed, order[idx], ()=>{ editing=false; const p=pool(); order=p; idx=Math.max(0,p.findIndex(x=>x.photo===order[idx]?.photo)); flipped=true; render(); }); }
@@ -193,17 +205,26 @@ function renderEditorInto(ed, c, onDone){
 }
 
 // ---------- drill (self-graded flashcards) ----------
-const quizEl=document.getElementById('quizbody');
-let drun=[], di=0, dflip=false, dres={}, dirty=false, smart=true;
+let dres={}, fcSmart=true, saveT=null; try{ fcSmart=localStorage.getItem('bn-fc')!=='order'; }catch(e){}
 function weight(c){ const x=(S.drill[me]||{})[c.photo]; if(!x) return 3; const r=x.r||(x.last==='ok'?5:x.last==='some'?3:1); const s=x.streak||0; if(r<=1) return 4.5; if(r===2) return 3.5; if(r===3) return 2.5; if(r===4) return 1.4; return s>=4?0.25:s>=2?0.6:1.2; }
-function startDrill(){
-  const p=pool(); di=0; dflip=false; dres={};
-  if(!smart||!me){ drun=shuffle(p); return; }
-  // weighted sample without replacement: weak/unknown first, but everyone can still show up
-  const items=p.map(c=>({c,w:weight(c)})); const out=[];
-  while(items.length){ let tot=items.reduce((a,b)=>a+b.w,0); let r=Math.random()*tot; let i=0; for(;i<items.length;i++){ r-=items[i].w; if(r<=0) break; } out.push(items.splice(Math.min(i,items.length-1),1)[0].c); }
-  drun=out;
+function smartOrder(p){
+  // weighted sample without replacement: missed and never-seen first, solid ones (knew it 2+ in a row) less often
+  const items=p.map(c=>({c,w:weight(c)})), out=[];
+  while(items.length){ const tot=items.reduce((a,b)=>a+b.w,0); let r=Math.random()*tot, i=0; for(;i<items.length;i++){ r-=items[i].w; if(r<=0) break; } out.push(items.splice(Math.min(i,items.length-1),1)[0].c); }
+  return out;
 }
+function recOf(photo){
+  // saved record with this session's unsaved ratings applied, for the progress line
+  let x=Object.assign({},(S.drill[me]||{})[photo]||{}); const r=dres[photo]; if(r){ x.r=r; x.streak=r===5?(x.streak||0)+1:0; x.last=r>=4?'ok':r>=2?'some':'miss'; } return x;
+}
+const isSolid = x => x&&x.last==='ok'&&(x.streak||0)>=2;
+function rateCard(r){
+  const c=order[idx]; if(!c) return; if(!me){ askName(); return; }
+  if(dres[c.photo]){ saveDrill(); } // second rating of the same card in a batch: save the first one before overwriting
+  dres[c.photo]=r; idx=(idx+1)%order.length; flipped=false; renderCard();
+  clearTimeout(saveT); if(Object.keys(dres).length>=5) saveDrill(); else saveT=setTimeout(saveDrill,8000);
+}
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') saveDrill(); });
 function myDrill(){ return (S.drill[me]=S.drill[me]||{}); }
 async function saveDrill(){
   if(!Object.keys(dres).length) return true;
@@ -212,35 +233,6 @@ async function saveDrill(){
   if(!ok) dres=Object.assign(snap,dres);
   return ok;
 }
-function renderQuiz(){
-  document.getElementById('q-fn').setAttribute('aria-pressed',qkind==='fn'); document.getElementById('q-nf').setAttribute('aria-pressed',qkind==='nf');
-  if(!drun.length) startDrill();
-  { const p=pool(); const d=S.drill[me]||{}; const solid=p.filter(c=>{const x=d[c.photo]; return x&&x.last==='ok'&&(x.streak||0)>=2;}).length, shaky=p.filter(c=>{const x=d[c.photo]; return x&&(x.last!=='ok'||(x.streak||0)<2);}).length, never=p.length-solid-shaky;
-    document.getElementById('recall').innerHTML=me?`Recall: <b>${solid}</b> solid (2+ in a row) · <b>${shaky}</b> shaky · <b>${never}</b> never drilled${smart?' · smart order puts shaky and new ones first':''}`:'Pick your name to track recall.'; }
-  if(!drun.length){ quizEl.innerHTML='<div class="reveal">Nothing in this set.</div>'; return; }
-  if(di>=drun.length){
-    const vals=Object.values(dres); const got=vals.filter(r=>r===5).length, some=vals.filter(r=>r>=2&&r<5).length, tot=vals.length; const avg=tot?(vals.reduce((a,b)=>a+b,0)/tot).toFixed(1):'0';
-    quizEl.innerHTML=`<div class="reveal"><div class="big">${avg}<small> avg / 5 · ${got} perfect · ${some} partial</small></div>Anything under 5 got starred. ${me?'Saving this run to your record…':'Pick your name to save this run.'}</div><div class="ctrl"><button class="btn primary" id="again">Run it again</button></div>`;
-    document.getElementById('again').onclick=()=>{ startDrill(); renderQuiz(); };
-    saveDrill().then(ok=>{ const r=quizEl.querySelector('.reveal'); if(r) r.innerHTML=`<div class="big">${avg}<small> avg / 5 · ${got} perfect · ${some} partial</small></div>${ok?'Saved to your record.':'Not saved (see message).'}`; });
-    return;
-  }
-  const c=drun[di]; const rec=(S.drill[me]||{})[c.photo];
-  const hist = rec ? `<span>last ${rec.r||'?'}/5 · avg ${rec.n?(rec.sum/rec.n).toFixed(1):'?'} over ${rec.n||rec.ok+rec.miss+(rec.some||0)}${rec.streak>1?' · streak '+rec.streak:''}</span>` : '<span>never drilled</span>';
-  const front = qkind==='fn' ? `<img src="${IMG(c.photo)}" alt="who is this"><div class="prompt">Say their name, then flip · ${di+1} / ${drun.length}</div>` : `<div class="prompt">Picture their face, then flip · ${di+1} / ${drun.length}</div><h2>${esc(c.name)}</h2>`;
-  const rows=FIELDS.filter(([k])=>k!=='cls').map(([k,l])=>[l,c[k]]).concat(Object.entries(c.extra||{})).filter(([k,v])=>v);
-  const back = `<div class="back" style="text-align:left;padding:0"><img src="${IMG(c.photo)}" alt=""><div><h2>${esc(c.name)}</h2><span class="tag">${esc(c.cls)}</span></div><div class="facts">${rows.map(([k,v])=>`<div><b>${esc(k)}</b><span>${esc(v)}</span></div>`).join('')||'<div class="empty">No facts filled in yet.</div>'}</div></div>`;
-  quizEl.innerHTML=`<div class="card" id="dcard" style="padding:14px;text-align:center">${dflip?back:front}</div>
-    ${dflip?`<div class="legend" style="text-align:center;margin-top:10px">How much did you know? 1 = nothing · 5 = everything</div><div class="opts" style="grid-template-columns:repeat(5,1fr);gap:6px">${[1,2,3,4,5].map(r=>`<button class="opt rate" data-r="${r}" style="padding:16px 4px;font-size:22px;border-color:${['#B23A3A','#C96A3A','#C79A2B','#7FA84A','#1F7A4D'][r-1]};box-shadow:inset 0 0 0 2px ${['#B23A3A','#C96A3A','#C79A2B','#7FA84A','#1F7A4D'][r-1]}">${r}</button>`).join('')}</div><div class="legend" style="display:flex;justify-content:space-between"><span>name wrong</span><span>name only</span><span>some facts</span><span>most</span><span>all</span></div>`:`<div class="ctrl"><button class="btn primary" id="dflip">Flip</button></div>`}
-    <div class="score">${hist}<span>${Object.keys(dres).length} rated this run</span></div>`;
-  const flip=()=>{ dflip=true; renderQuiz(); };
-  if(!dflip){ quizEl.querySelector('#dcard').onpointerdown=e=>{ if(!e.button) flip(); }; quizEl.querySelector('#dflip').onpointerdown=e=>{ if(!e.button) flip(); }; }
-  else {
-    quizEl.querySelectorAll('.rate').forEach(b=>b.onpointerdown=e=>{ if(e.button) return; const r=+b.dataset.r; dres[c.photo]=r; if(r<5){ stars[c.photo]=1; saveStars(); } di++; dflip=false; renderQuiz(); });
-  }
-}
-document.addEventListener('keydown', e=>{ if(mode!=='quiz'||['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return; const fire=id=>{ const b=quizEl.querySelector(id); if(b&&b.onpointerdown) b.onpointerdown({button:0}); }; if(e.key===' '){ e.preventDefault(); fire('#dflip'); } if('12345'.includes(e.key)&&e.key){ const b=quizEl.querySelector('.rate[data-r="'+e.key+'"]'); if(b) b.onpointerdown({button:0}); } });
-
 // ---------- directory ----------
 function renderDir(){
   const q=document.getElementById('dirq').value.trim().toLowerCase(); const out=document.getElementById('dirres');
@@ -263,9 +255,9 @@ function openInDir(photo, edit){
 }
 function renderDirDetail(){
   const c=S.cards.find(x=>x.photo===dirOpen); if(!c) return '';
-  const rows=FIELDS.map(([k,l])=>[l,c[k]]).concat(Object.entries(c.extra||{}));
+  const rows=FIELDS.filter(([k])=>k!=='full').map(([k,l])=>[l,c[k]]).concat(Object.entries(c.extra||{}));
   rows.push(['LinkedIn', c.li?`<a href="https://www.linkedin.com/in/${esc(c.li)}/" target="_blank" rel="noopener">linkedin.com/in/${esc(c.li)}</a>`:'', true]);
-  return `<div id="dirdetail" class="card" style="margin-top:12px;cursor:default"><div class="back"><img src="${IMG(c.photo)}" alt=""><div><h2>${esc(c.name)}</h2>${c.alias?`<div class="alias">${esc(c.alias)}</div>`:''}<span class="tag">${esc(c.cls)}</span></div><div class="facts">${rows.map(([k,v,raw])=>`<div><b>${esc(k)}</b><span>${v?(raw?v:esc(v)):'<span class="empty">not filled in yet</span>'}</span></div>`).join('')}</div>${sigHtml(c)}</div></div>
+  return `<div id="dirdetail" class="card" style="margin-top:12px;cursor:default"><div class="back"><img src="${IMG(c.photo)}" alt=""><div><h2>${esc(c.name)}</h2>${c.full?`<div class="fullname"><small>Full name (official)</small>${esc(c.full)}</div>`:''}${c.alias?`<div class="alias">${esc(c.alias)}</div>`:''}<span class="tag">${esc(c.cls)}</span></div><div class="facts">${rows.map(([k,v,raw])=>`<div><b>${esc(k)}</b><span>${v?(raw?v:esc(v)):'<span class="empty">not filled in yet</span>'}</span></div>`).join('')}</div>${sigHtml(c)}</div></div>
     <div class="ctrl"><button class="btn" id="dirclose">Close</button><button class="btn primary" id="diredit">${dirEdit?'Close editor':'✎ Edit this brother'}</button></div><div id="direditor" ${dirEdit?'':'hidden'}></div>`;
 }
 
@@ -505,7 +497,7 @@ function renderTasks(){
 // ---------- milestones ----------
 // what "done" means for each milestone; change the date or tests here
 const MILESTONES={by:'2026-10-12', items:[
-  {id:'names', label:'All names', how:'every face solid (rated 5 twice in a row in Drill)', val:n=>[Object.values(S.drill[n]||{}).filter(x=>x.last==='ok'&&(x.streak||0)>=2).length, S.cards.length]},
+  {id:'names', label:'All names', how:'every card solid (Knew it twice in a row on Flashcards)', val:n=>[Object.values(S.drill[n]||{}).filter(x=>x.last==='ok'&&(x.streak||0)>=2).length, S.cards.length]},
   {id:'quiz', label:'Quiz 100%', how:'Spell 100% on all 4 class rolls', val:n=>[ROLLS.filter(r=>rollBest(n,r.cls)===100).length, ROLLS.length]}]};
 function msLeft(){ const d=Math.round((new Date(MILESTONES.by+'T12:00:00')-new Date(today()+'T12:00:00'))/864e5); return d>1?d+' days left':d===1?'1 day left':d===0?'due today':'past due'; }
 function milestonesHtml(){
@@ -556,7 +548,7 @@ function renderAcct(){
   const clsSigs=sigCards().filter(c=>sigOf(c).status==='signed').length+'/'+sigCards().length;
   const pctCell=b=>`<td class="n${b===100?' hit':''}">${b===null?'—':b+'%'}</td>`;
   acctEl.innerHTML=milestonesHtml()+informalsHtml()+rankHtml()+`<div class="editor" style="margin-top:12px"><h2>Where everyone stands</h2>
-    <div class="status">Green = target hit. Faces = brothers rated 5 twice in a row. Spell = best score (target 100%). Tasks = done / assigned. Sigs signed = the class's signed sig tasks (done together).</div>
+    <div class="status">Green = target hit. Faces = cards marked Knew it twice in a row on Flashcards. Spell = best score (target 100%). Tasks = done / assigned. Sigs signed = the class's signed sig tasks (done together).</div>
     <div style="overflow-x:auto"><table class="lb"><tr><th>Pledge</th><th class="n">Faces</th>${ROLLS.map(r=>`<th class="n">${esc(r.cls.replace('Beta ',''))}</th>`).join('')}<th class="n">Tasks</th><th class="n">Sigs signed</th></tr>
     ${rows.map(r=>`<tr><td>${esc(r.n.split(' ')[0])}${r.n===me?' <b>(you)</b>':''}</td><td class="n${r.solid>=total?' hit':''}">${r.solid}/${total}</td>${r.spell.map(pctCell).join('')}<td class="n${r.assigned&&r.done===r.assigned?' hit':''}">${r.done}/${r.assigned}</td><td class="n">${clsSigs}</td></tr>`).join('')}</table></div>
     <div class="status">Spell columns: Psi, Chi, Phi, Upsilon rolls.</div></div>
@@ -638,14 +630,14 @@ function renderToday(){
     ${weeklyHtml()}
     ${myMilestonesHtml()}
     <div class="editor"><h2>Your progress</h2><div class="status">Faces solid <b>${solid}/${S.cards.length}</b> · Rolls spelled 100% <b>${spell}/${ROLLS.length}</b></div>
-      <div class="ctrl"><button class="btn primary" id="tdrill">Start drill</button></div></div>
+      <div class="ctrl"><button class="btn primary" id="tdrill">Study flashcards</button></div></div>
     ${(()=>{ const nx=sigCards().filter(c=>['confirmed','done'].includes(sigOf(c).status)).sort((a,b)=>(+sigOf(a).difficulty||99)-(+sigOf(b).difficulty||99)||a.name.localeCompare(b.name)); return nx.length?`<h3 class="sec">Next sig tasks <small>${nx.length} in progress · easiest first</small></h3>${nx.slice(0,5).map(c=>sigRow(c,true)).join('')}${nx.length>5?`<div class="status"><button class="small" id="allsigs">See all ${nx.length}</button></div>`:''}`:''; })()}
     ${plan.catchup.length?`<h3 class="sec">Catch up <small>${plan.catchup.filter(t=>isDone(t,me)).length} of ${plan.catchup.length} done</small></h3>${plan.catchup.map(t=>checkRow(t,me,true)).join('')}`:''}
     ${plan.days.length?plan.days.map(([d,ts])=>`<h3 class="sec">${esc(dayName(d))}</h3><div class="status" style="margin:0 0 2px">${goal(d,ts)}</div>${ts.map(t=>checkRow(t,me,false)).join('')}`).join('')
       :plan.catchup.length?'':`<div class="reveal" style="margin-top:14px;text-align:center"><div class="big">Nothing due 🎉</div><div class="ctrl"><button class="btn" id="tstudy">Go to Study</button></div></div>`}
     ${plan.ongoing.length?`<details class="ogd" ${ongoingOpen?'open':''}><summary><h3 class="sec">Ongoing <small>${plan.ongoing.length}</small></h3></summary>${plan.ongoing.map(t=>checkRow(t,me,false)).join('')}</details>`:''}`;
   const od=todayEl.querySelector('.ogd'); if(od) od.ontoggle=()=>{ ongoingOpen=od.open; };
-  todayEl.querySelector('#tdrill').onclick=()=>{ filter='all'; renderChips(); setMode('quiz'); };
+  todayEl.querySelector('#tdrill').onclick=()=>{ view='cards'; setMode('learn'); };
   const sb=todayEl.querySelector('#tstudy'); if(sb) sb.onclick=()=>setMode(lastStudy);
   const as=todayEl.querySelector('#allsigs'); if(as) as.onclick=()=>setMode('sigs');
   bindTasks(todayEl, renderToday); bindSig(todayEl, renderToday);
@@ -668,7 +660,7 @@ function weeklyHtml(){
 
 // ---------- spell (roll call) ----------
 const rollEl=document.getElementById('roll');
-const ROLLS=SEED.rolls||[];
+const ROLLS=(SEED.rolls||[]).slice().sort((a,b)=>clsRank(a.cls)-clsRank(b.cls));
 let rIdx=0, rDraft={};
 const nw = w => w.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
 const words = t => String(t||'').replace(/\*/g,'').split(/[\s\-]+/).filter(w=>nw(w));
@@ -717,26 +709,25 @@ function renderRollBoard(){
 }
 
 // ---------- error safety net ----------
-function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06i'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
+function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06j'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
   b.innerHTML='<span style="flex:1;word-break:break-word">Something broke: '+esc(msg)+'</span><button onclick="location.reload()" style="border:0;background:#fff;color:#B23A3A;border-radius:8px;padding:6px 10px;font:600 13px \'Public Sans\',sans-serif;cursor:pointer">Reload</button><button onclick="document.getElementById(\'errbar\').remove()" style="border:0;background:transparent;color:#fff;font-size:18px;cursor:pointer">×</button>'; }
 window.addEventListener('error', e=>{ showErr((e.message||'error')+' @'+(e.lineno||'?')); try{ render(); }catch(x){} });
 window.addEventListener('unhandledrejection', e=>{ showErr('async: '+((e.reason&&e.reason.message)||e.reason||'error')); });
 
 // ---------- render ----------
 function render(){
-  if(!['today','learn','quiz','roll','tasks','sigs','guide','facts','acct','log'].includes(mode)) mode='today';
+  if(!['today','learn','roll','tasks','sigs','guide','facts','acct','log'].includes(mode)) mode='today';
   document.getElementById('count').textContent=`${pool().length} in this set · ${Object.keys(stars).length} starred · data v${S.version}`;
-  const showChips = mode==='learn'||mode==='quiz';
+  const showChips = mode==='learn';
   chipsEl.hidden=!showChips; document.getElementById('count').hidden=!showChips;
-  for(const id of ['today','learn','quiz','roll','tasks','sigs','guide','facts','acct','log']) document.getElementById(id).hidden = mode!==id;
+  for(const id of ['today','learn','roll','tasks','sigs','guide','facts','acct','log']) document.getElementById(id).hidden = mode!==id;
   const tab=tabOf(mode);
   document.querySelectorAll('[role=tab]').forEach(t=>t.setAttribute('aria-selected', t.dataset.tab===tab));
   document.getElementById('studysub').hidden = tab!=='study'; document.getElementById('infosub').hidden = tab!=='info'; document.getElementById('tasksub').hidden = tab!=='tasks';
   document.querySelectorAll('#studysub [data-m],#infosub [data-m],#tasksub [data-m]').forEach(b=>b.setAttribute('aria-pressed', b.dataset.m===mode));
-  if(mode==='learn'){ document.getElementById('v-cards').setAttribute('aria-pressed',view==='cards'); document.getElementById('v-grid').setAttribute('aria-pressed',view==='grid'); document.getElementById('v-dir').setAttribute('aria-pressed',view==='dir'); document.getElementById('cardwrap').hidden=view!=='cards'; gridEl.hidden=view!=='grid'; document.getElementById('dir').hidden=view!=='dir'; if(view==='cards') renderCard(); else if(view==='grid') renderGrid(); else renderDir(); }
+  if(mode==='learn'){ document.getElementById('o-smart').setAttribute('aria-pressed',fcSmart); document.getElementById('o-order').setAttribute('aria-pressed',!fcSmart); document.getElementById('v-cards').setAttribute('aria-pressed',view==='cards'); document.getElementById('v-grid').setAttribute('aria-pressed',view==='grid'); document.getElementById('v-dir').setAttribute('aria-pressed',view==='dir'); document.getElementById('cardwrap').hidden=view!=='cards'; gridEl.hidden=view!=='grid'; document.getElementById('dir').hidden=view!=='dir'; if(view==='cards') renderCard(); else if(view==='grid') renderGrid(); else renderDir(); }
   else if(mode==='today') renderToday();
   else if(mode==='roll') renderRoll();
-  else if(mode==='quiz') renderQuiz();
   else if(mode==='acct') renderAcct();
   else if(mode==='tasks') renderTasks();
   else if(mode==='sigs') renderSigs();
@@ -746,4 +737,4 @@ function render(){
 }
 renderWho(); setStatus('Loading…');
 Promise.all([loadPhotos(),refresh()]).then(()=>{ renderChips(); resetOrder(); render(); if(!me) setTimeout(askName, 300); loadSheets().then(()=>{ if(['today','acct','sigs'].includes(mode)) render(); }); });
-setInterval(()=>{ const ae=document.activeElement, typing=ae&&(ae.tagName==='TEXTAREA'||(ae.tagName==='INPUT'&&ae.type!=='checkbox')); if(document.visibilityState==='visible' && !typing && !tEdit && !editing && !dirEdit && mode!=='learn' && mode!=='quiz') refresh().then(()=>{ order=order.map(c=>S.cards.find(x=>x.photo===c.photo)||c); drun=drun.map(c=>S.cards.find(x=>x.photo===c.photo)||c); if(['today','tasks','sigs','acct','log','facts','guide'].includes(mode)) render(); }); loadSheets(); }, 30000);
+setInterval(()=>{ const ae=document.activeElement, typing=ae&&(ae.tagName==='TEXTAREA'||(ae.tagName==='INPUT'&&ae.type!=='checkbox')); if(document.visibilityState==='visible' && !typing && !tEdit && !editing && !dirEdit && mode!=='learn' && mode!=='quiz') refresh().then(()=>{ order=order.map(c=>S.cards.find(x=>x.photo===c.photo)||c); if(['today','tasks','sigs','acct','log','facts','guide'].includes(mode)) render(); }); loadSheets(); }, 30000);
