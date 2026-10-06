@@ -247,7 +247,6 @@ header small{color:var(--ink2);font-size:12px;text-transform:uppercase;letter-sp
 .facts span{white-space:pre-line}
 .dash{display:grid;gap:10px;margin-top:10px}
 @media (min-width:640px){.dash{grid-template-columns:1fr 1fr}}
-.dash.light{--panel:#FFFFFF;--ink:#1B1526;--ink2:#5B5468;--line:#DAD5E3;--bad:#B23A3A;background:#F3F1F7;padding:10px;border-radius:14px;color:#1B1526}
 .dcard{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:13px;color:var(--ink)}
 .dtop{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .dtop b{font-family:"Bricolage Grotesque",sans-serif;font-size:15px}
@@ -273,3 +272,20 @@ header small{color:var(--ink2);font-size:12px;text-transform:uppercase;letter-sp
 .pchg .from{color:var(--bad);text-decoration:line-through}
 .pchg .to{color:var(--good)}
 .qany{display:flex;gap:8px;align-items:center;min-height:44px;font-size:13px;color:var(--ink2)}
+.tag-ok,.tag-bad{display:inline-block;font-size:11px;font-weight:600;border-radius:6px;padding:0 6px}
+.tag-ok{color:var(--good);background:rgba(31,122,77,.14)}
+.tag-bad{color:#fff;background:var(--bad)}
+.lb td small.pc{display:block;font-size:10px;font-weight:500}
+.lb td small.pc.ok{color:var(--ink2)}
+.lb td small.pc.bad{color:var(--bad);font-weight:700}
+#cmts .goals li{align-items:center}
+#cmts .x{flex:none;width:36px;height:36px;margin:-8px -8px -8px 0;border:0;background:none;color:var(--ink2);font-size:20px;cursor:pointer}
+.cform{display:flex;gap:8px;margin-top:8px}
+.cform input{flex:1;min-width:0;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink);font:inherit}
+.cform input[type=date]{flex:0 0 auto}
+#cmts .wh{margin:12px 0 6px;font-size:15px}
+.whose{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:13px;color:var(--ink2)}
+.whose select{flex:1;max-width:220px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink);font:600 14px "Public Sans",sans-serif}
+.lb.grades th,.lb.grades td{padding:6px 4px;white-space:nowrap}
+.lb.grades td small{font-size:11px!important}
+.lb.grades th{white-space:normal}

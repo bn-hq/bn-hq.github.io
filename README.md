@@ -6,11 +6,15 @@ Three files, no build step:
 
 Tabs:
 
-- **Today** – Weekly progress (informals per pledge vs target, this week's goals, tasks done this week; visible to everyone), then your plan for the days ahead: catch-up items, a checklist per day, ongoing (undated) tasks folded below, your % done this period (resets after each meeting: "Meeting #n" tasks at 8:30 PM, else Sunday 11:59 PM), streak, whole-class bar, milestones due 10/12, sig tasks you own, Start drill.
+- **Today** – Weekly progress (informals per pledge vs target, this week's goals, tasks done this week; visible to everyone), then your plan for the days ahead: catch-up items, a checklist per day, ongoing (undated) tasks folded below, your % done this period (resets after each meeting: "Meeting #n" tasks at 8:30 PM, else Sunday 11:59 PM), streak, whole-class bar, milestones due 10/11 with expected-by-today and On pace / Behind, Exams + commitments (anyone can add a busy time: text, date, optional time; shows to everyone with who added it; the adder or PCP can delete it; saved instantly, no review), sig tasks you own, Start drill.
 - **Study** – Flashcards (cards, all faces, directory; after flipping rate Didn't know / Partly / Knew it; Smart or In order; classes Upsilon → Phi → Chi → Psi → Omega in official roll order) Spell (type a class roll from memory, same order) and Quizzes (question sets; In order / Shuffle / Missed only).
-- **Tasks** – Tasks: everyone sees their own board (their tasks + whole-class tasks). The PCP can switch to anyone's board and is the only one who can add (one-line adder: `@4`/`@Tim`/`@me`, `fri`/`10/12`/`in 3 days`, no date = ongoing; on a person's board no `@` means that person, or tap Add to all; paste many lines at once) and Sig tasks (To request / In progress / Signed).
-- **Scores** – grades (half tasks completed of everything due before today, half informals Done vs target; A+ 97, A 93, A− 90 … F under 60), milestones (All names = every face solid; Quiz 100% = Spell 100% on all 4 rolls; due 10/12, set in `MILESTONES` in app.js), weekly ranking (meeting to meeting, this week / last week; tasks, 100% Spell attempts, faces turning solid), then the proficiency table.
-- **Info** – Guide, Facts, Edit history.
+- **Tasks** – Tasks: everyone sees their own board (their tasks + whole-class tasks). The PCP picks whose board with "Whose tasks: Me ▾" (one person at a time, default themselves) and is the only one who can add (one-line adder: `@4`/`@Tim`/`@me`, `fri`/`10/11`/`in 3 days`, no date = ongoing; on the PCP's own board no `@` means the whole class, on someone else's board it means that person, or tap Add to all; paste many lines at once) and Sig tasks (To request / In progress / Signed).
+- **Scores** – grades (half tasks completed of everything due before today, half informals Done vs expected-by-today on pace; A+ 97, A 93, A− 90 … F under 60), milestones (All names = every face solid; Quiz 100% = Spell 100% on all 4 rolls; due 10/11, set in `MILESTONES` in app.js), informals, then Where everyone stands.
+
+Pace: informals and milestones are on a straight line from induction (`PACE_START`, Wed 9/16) to the deadline: expected by today = target × share of days elapsed. Shown as "expected" plus On pace / Behind (red).
+- **Info** – Guide (searchable), Facts, Edit history.
+
+Quizzes also include a **Fun facts** set built live from the "Fun facts:" bullets in brothers' card notes ("Which brother?"; full name accepted). It is not stored in `quiz`; edit the card to change it.
 
 Data (cards, tasks, facts, guide, scores) is in a Firebase database, not in this repo. The site reads and writes it directly; every write goes through `commit()` in app.js and is logged.
 
@@ -18,6 +22,7 @@ Data (cards, tasks, facts, guide, scores) is in a Firebase database, not in this
 - `tasks/<id>` – `{id, title, due, notes, by, at, done: {name: isoTime}, who?: [names]}`. Missing or empty `who` means the whole class. The adder never creates a second task with the same normalized title and assignees. Missing `due` means ongoing (never overdue, not in weekly %). `repeat: 'daily'` (+ `time`) tasks show every day and reset daily: `done[name]` is the date done; `auto: 'quiz'` ones count as done on any day with a Quizzes or Spell attempt.
 - `recitals` – `{who, at, passage, pct}`. `passage` is `roll:<class>` for Spell (older entries are from the removed Recite page).
 - `quiz` – `{sets: {setId: {title, order, both?, note?, items: {id: {q, a, alt?: [..], order}}}}}`. The PCP edits it in the app; items with an empty answer are hidden from quizzes. `both` sets are asked both ways. Items with `anyOrder: true` accept their comma-separated parts in any order. Attempts are `recitals` with passage `quiz:<set>:<item>`.
+- `commitments/<push id>` – `{who, text, date, time?, at}`, written straight from Today (not through `commit()`/review).
 
 Grading (Spell and Quizzes): not case-sensitive and extra spaces don't matter; spelling, punctuation, word order and grammar do. Spell also ignores accents and `*`. Curly and straight quotes count as the same.
 - `drill/<name>` – per-card Flashcards ratings (1 / 3 / 5, streak, at); solid = Knew it twice in a row. `log`, `facts`, `guide`, `passages`, `version` as before.
