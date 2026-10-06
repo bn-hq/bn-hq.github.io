@@ -122,7 +122,7 @@ function renderChips(){
   chipsEl.innerHTML = items.map(([k,l])=>`<button class="chip" data-f="${esc(k)}" aria-pressed="${filter===k}">${esc(l)}</button>`).join('');
 }
 chipsEl.addEventListener('click', e=>{ const b=e.target.closest('.chip'); if(!b) return; filter=b.dataset.f; renderChips(); saveDrill(); resetOrder(); render(); });
-const STUDY=['learn','roll','quizzes'], INFO=['guide','facts','log'], TASKS=['tasks','sigs'];
+const STUDY=['learn','roll','quizzes'], INFO=['guide','facts','log'], TASKS=['tasks','sigs','dash'];
 let lastStudy='learn', lastInfo='guide', lastTasks='tasks'; try{ const v=JSON.parse(localStorage.getItem('bn-sub')||'{}'); if(STUDY.includes(v.s)) lastStudy=v.s; if(INFO.includes(v.i)) lastInfo=v.i; if(TASKS.includes(v.t)) lastTasks=v.t; }catch(e){}
 const tabOf = m => STUDY.includes(m)?'study':INFO.includes(m)?'info':TASKS.includes(m)?'tasks':m;
 function setMode(m){
@@ -718,6 +718,34 @@ function weeklyHtml(){
     <h3 class="wh">Tasks done this week</h3>${tk.map(([n,w])=>`<div class="hb"><span class="hl">${esc(first(n))}</span><div class="ht"><i style="width:${w.tot?(100*w.done/w.tot).toFixed(1):0}%"></i></div><span class="hv">${w.done} of ${w.tot}</span></div>`).join('')}</div>`;
 }
 
+// ---------- PCP dashboard: every pledge's open tasks, copyable ----------
+const dashEl=document.getElementById('dash');
+let dashLight=false; try{ dashLight=localStorage.getItem('bn-dash')==='light'; }catch(e){}
+function openTasksOf(n){
+  // everything assigned to n (incl. whole-class) not yet checked by n, grouped by due day; undated last as Ongoing
+  const t0=today(), xs=S.tasks.filter(t=>isFor(t,n)&&!isDone(t,n)).sort((a,b)=>((a.due||'9999')+(a.time||'99:99'))<((b.due||'9999')+(b.time||'99:99'))?-1:1), g=[];
+  for(const t of xs){ const k=!t.due?'Ongoing':t.due<t0?'Overdue':t.due===t0?'Today':t.due===addDays(t0,1)?'Tomorrow':shortDay(t.due); const l=g[g.length-1]; if(l&&l[0]===k) l[1].push(t); else g.push([k,[t]]); }
+  return g;
+}
+const dueBit = t => !t.due ? 'ongoing' : (t.due<today()?'overdue, due ':'due ')+shortDay(t.due)+(t.time?', '+timeText(t.time):'');
+function dashText(r){ const g=openTasksOf(r.name); return `#${r.n} ${first(r.name)} — tasks\n`+(g.length?g.flatMap(([,ts])=>ts).map(t=>`• ${t.title} (${dueBit(t)})`).join('\n'):'• Nothing open'); }
+async function copyText(txt){
+  try{ await navigator.clipboard.writeText(txt); }catch(e){ const ta=document.createElement('textarea'); ta.value=txt; ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.select(); try{ document.execCommand('copy'); }catch(x){} ta.remove(); }
+  toast('Copied');
+}
+function renderDash(){
+  const R=SEED.roster||[], I=informals(), P=periodAt();
+  dashEl.innerHTML=`<div class="ctrl" style="align-items:center"><button class="btn primary" id="dcopyall">Copy all</button><button class="btn" id="dlight" aria-pressed="${dashLight}" style="flex:0 0 auto">${dashLight?'Dark cards':'Light cards'}</button></div>
+    <div class="status">${esc(P.label)} · open = assigned to them (incl. whole class) and not checked off yet</div>
+    <div class="dash ${dashLight?'light':''}">${R.map(r=>{ const c=I&&I[r.name], w=weekStats([r.name],P), g=openTasksOf(r.name), open=g.reduce((a,[,ts])=>a+ts.length,0);
+      return `<div class="dcard" data-n="${r.n}"><div class="dtop"><b>#${r.n} ${esc(r.name)}</b><button class="small" data-dcopy="${r.n}">Copy tasks</button></div>
+        <div class="dstat">${c?`Informals: <b>${c.done}/${c.target}</b> done · ${c.confirmed} confirmed · ${c.emailed} emailed`:'Informals: not synced yet'}<br>This period: <b>${w.done}</b> done · <b>${w.tot-w.done}</b> open · ${open} open overall</div>
+        ${g.length?g.map(([k,ts])=>`<div class="dday${k==='Overdue'?' late':''}">${esc(k)}</div><ul>${ts.map(t=>`<li>${esc(t.title)}${t.due?` <span>· ${esc(shortDay(t.due))}${t.time?' · '+timeText(t.time):''}</span>`:''}</li>`).join('')}</ul>`).join(''):'<div class="dstat">Nothing open.</div>'}</div>`; }).join('')}</div>`;
+  dashEl.querySelector('#dcopyall').onclick=()=>copyText(R.map(dashText).join('\n\n'));
+  dashEl.querySelector('#dlight').onclick=()=>{ dashLight=!dashLight; try{ localStorage.setItem('bn-dash',dashLight?'light':'dark'); }catch(e){} renderDash(); };
+  dashEl.querySelectorAll('[data-dcopy]').forEach(b=>b.onclick=()=>copyText(dashText(R.find(r=>r.n===+b.dataset.dcopy))));
+}
+
 // ---------- quizzes (question bank in Firebase `quiz`, attempts in recitals as quiz:set:item) ----------
 const quizEl=document.getElementById('quizzes');
 const byOrder=(a,b)=>(a.order??0)-(b.order??0);
@@ -865,18 +893,20 @@ function renderRollBoard(){
 }
 
 // ---------- error safety net ----------
-function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06o'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
+function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06p'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
   b.innerHTML='<span style="flex:1;word-break:break-word">Something broke: '+esc(msg)+'</span><button onclick="location.reload()" style="border:0;background:#fff;color:#B23A3A;border-radius:8px;padding:6px 10px;font:600 13px \'Public Sans\',sans-serif;cursor:pointer">Reload</button><button onclick="document.getElementById(\'errbar\').remove()" style="border:0;background:transparent;color:#fff;font-size:18px;cursor:pointer">×</button>'; }
 window.addEventListener('error', e=>{ showErr((e.message||'error')+' @'+(e.lineno||'?')); try{ render(); }catch(x){} });
 window.addEventListener('unhandledrejection', e=>{ showErr('async: '+((e.reason&&e.reason.message)||e.reason||'error')); });
 
 // ---------- render ----------
 function render(){
-  if(!['today','learn','roll','quizzes','tasks','sigs','guide','facts','acct','log'].includes(mode)) mode='today';
+  if(!['today','learn','roll','quizzes','tasks','sigs','dash','guide','facts','acct','log'].includes(mode)) mode='today';
   document.getElementById('count').textContent=`${pool().length} in this set · ${Object.keys(stars).length} starred · data v${S.version}`;
   const showChips = mode==='learn';
   chipsEl.hidden=!showChips; document.getElementById('count').hidden=!showChips;
-  for(const id of ['today','learn','roll','quizzes','tasks','sigs','guide','facts','acct','log']) document.getElementById(id).hidden = mode!==id;
+  for(const id of ['today','learn','roll','quizzes','tasks','sigs','dash','guide','facts','acct','log']) document.getElementById(id).hidden = mode!==id;
+  if(mode==='dash'&&!isPCP()){ mode='tasks'; lastTasks='tasks'; }
+  document.querySelector('#tasksub [data-m=dash]').hidden=!isPCP();
   const tab=tabOf(mode);
   document.querySelectorAll('[role=tab]').forEach(t=>t.setAttribute('aria-selected', t.dataset.tab===tab));
   document.getElementById('studysub').hidden = tab!=='study'; document.getElementById('infosub').hidden = tab!=='info'; document.getElementById('tasksub').hidden = tab!=='tasks';
@@ -888,6 +918,7 @@ function render(){
   else if(mode==='acct') renderAcct();
   else if(mode==='tasks') renderTasks();
   else if(mode==='sigs') renderSigs();
+  else if(mode==='dash') renderDash();
   else if(mode==='facts') renderFacts();
   else if(mode==='guide') renderGuide();
   else if(mode==='log') renderLog();
