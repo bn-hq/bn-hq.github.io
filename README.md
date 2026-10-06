@@ -37,7 +37,7 @@ Google Sheets with personal data (brothers' emails, exam schedules) are never pu
 
 The Signature Tasks Tracker can still override sig status client-side if it is shared for viewing (see `SHEETS` in app.js); otherwise the site keeps its own sig data.
 
-Tasks can have a `time` ("HH:MM"): the adder reads `7am`, `8:30pm`, `noon` or `at 7` before the date (no am/pm: 1–7 and 12 are PM, 8–11 AM). `@all` means the whole class.
+Tasks can have a `time` ("HH:MM"): the adder reads `7am`, `8:30pm`, `noon`, `midnight` (stored as 23:59) or `at 7` before the date (no am/pm: 1–7 and 12 are PM, 8–11 AM). `@all` means the whole class.
 
 To change the site: edit a file on `main`, wait a minute, hard refresh. Bump the `Build` line at the bottom of `index.html` so we know who's on what.
 
