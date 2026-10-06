@@ -211,3 +211,15 @@ header small{color:var(--ink2);font-size:12px;text-transform:uppercase;letter-sp
 .ms span{font-variant-numeric:tabular-nums;color:var(--ink2)}
 .ms .bar{height:6px;background:var(--line);border-radius:3px;margin-top:4px;overflow:hidden}
 .ms .bar i{display:block;height:100%;background:var(--good)}
+.weekly .wh{margin:14px 0 6px;font-size:15px}
+.weekly .wh small{font:500 11px "Public Sans",sans-serif;color:var(--ink2);margin-left:4px}
+.hb{display:grid;grid-template-columns:64px 1fr 52px;align-items:center;gap:8px;min-height:24px;font-size:13px}
+.hb .hl{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hb .ht{position:relative;height:10px;background:var(--line);border-radius:5px}
+.hb .ht i{display:block;height:100%;border-radius:5px;background:var(--purple2)}
+.hb .ht b{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink);transform:translateX(-1px)}
+.hb .hv{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink2)}
+.hb .hv.ok{color:var(--good);font-weight:600}
+.goals{list-style:none;padding:0;margin:0;display:grid;gap:6px;font-size:13px}
+.goals li{display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid var(--line);padding-bottom:6px}
+.goals b{white-space:nowrap;font-weight:600}
