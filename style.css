@@ -240,3 +240,4 @@ header small{color:var(--ink2);font-size:12px;text-transform:uppercase;letter-sp
 #qa{font-size:16px}
 .qedit{border-top:1px solid var(--line);padding-top:10px;margin-top:10px}
 .qedit .small{min-width:44px;min-height:44px}
+.lb td.grade{font-weight:700;font-family:"Bricolage Grotesque",sans-serif;font-size:15px}

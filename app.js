@@ -538,6 +538,27 @@ function rankHtml(){
     ${rows[0].pts?'':'<div class="status">No points yet. The top 3 show once someone scores.</div>'}<div class="podium">${rows.slice(0,rows[0].pts?3:0).map((r,i)=>`<div class="pod"><span class="pl">${i+1}</span><div><b>${esc(r.n)}${r.n===me?' (you)':''}</b><small>${esc(why(r))||'No points yet'}</small></div><span class="pts">${r.pts}</span></div>`).join('')}</div>
     <table class="lb">${rows.slice(rows[0].pts?3:0).map((r,i)=>`<tr><td class="n" style="width:2em;text-align:left">${i+(rows[0].pts?4:1)}</td><td>${esc(r.n)}${r.n===me?' <b>(you)</b>':''}</td><td class="n">${r.pts}</td></tr>`).join('')}</table></div>`;
 }
+// ---------- grades: tasks completed + informals, school scale ----------
+const LETTERS=[[97,'A+'],[93,'A'],[90,'A−'],[87,'B+'],[83,'B'],[80,'B−'],[77,'C+'],[73,'C'],[70,'C−'],[67,'D+'],[63,'D'],[60,'D−'],[0,'F']];
+const letter = pct => LETTERS.find(([min])=>pct>=min)[1];
+function gradeFor(n){
+  // tasks: share done of everything due before today (tasks finished early count too); informals: Done vs target, capped at 100%. Equal weight.
+  const t0=today(), xs=S.tasks.filter(t=>isFor(t,n)&&(isDone(t,n)||(t.due&&t.due<t0))), td=xs.filter(t=>isDone(t,n)).length;
+  const I=informals(), c=I&&I[n], parts=[];
+  const tp=xs.length?td/xs.length:null; if(tp!==null) parts.push(tp);
+  const ip=c?Math.min(1,c.done/c.target):null; if(ip!==null) parts.push(ip);
+  if(!parts.length) return null;
+  const pct=Math.round(100*parts.reduce((a,b)=>a+b,0)/parts.length);
+  return {pct, letter:letter(pct), tasks:[td,xs.length], inf:c?[c.done,c.target]:null};
+}
+function gradesHtml(){
+  const rows=PC().map(n=>[n,gradeFor(n)]).sort((a,b)=>(b[1]?b[1].pct:-1)-(a[1]?a[1].pct:-1)||a[0].localeCompare(b[0]));
+  return `<div class="editor" style="margin-top:12px"><h2>Grades</h2>
+    <div class="status">Half tasks completed (of everything due before today, plus anything finished early), half informals (Done vs target, ${INFORMALS.target}; ${Object.entries(INFORMALS.targets).map(([n,v])=>esc(first(n))+' '+v).join(', ')}). ${informals()?esc(informalsUpdated())+'.':'Informals not synced yet, so tasks only.'}</div>
+    <table class="lb"><tr><th>Pledge</th><th class="n">Tasks</th><th class="n">Informals</th><th class="n">Score</th><th class="n">Grade</th></tr>
+    ${rows.map(([n,g])=>`<tr><td>${esc(first(n))}${n===me?' <b>(you)</b>':''}</td><td class="n">${g&&g.tasks[1]?g.tasks[0]+'/'+g.tasks[1]:'—'}</td><td class="n">${g&&g.inf?g.inf[0]+'/'+g.inf[1]:'—'}</td><td class="n">${g?g.pct+'%':'—'}</td><td class="n grade${g&&g.pct>=90?' hit':''}">${g?g.letter:'—'}</td></tr>`).join('')}</table></div>`;
+}
+
 function renderAcct(){
   const pc=PC(); const total=S.cards.length;
   const solidOf=n=>Object.values(S.drill[n]||{}).filter(x=>x.last==='ok'&&(x.streak||0)>=2).length;
@@ -550,11 +571,11 @@ function renderAcct(){
   }).sort((a,b)=>b.hits-a.hits||b.solid-a.solid);
   const clsSigs=sigCards().filter(c=>sigOf(c).status==='signed').length+'/'+sigCards().length;
   const pctCell=b=>`<td class="n${b===100?' hit':''}">${b===null?'—':b+'%'}</td>`;
-  acctEl.innerHTML=milestonesHtml()+informalsHtml()+rankHtml()+`<div class="editor" style="margin-top:12px"><h2>Where everyone stands</h2>
+  acctEl.innerHTML=gradesHtml()+milestonesHtml()+informalsHtml()+rankHtml()+`<div class="editor" style="margin-top:12px"><h2>Where everyone stands</h2>
     <div class="status">Green = target hit. Faces = cards marked Knew it twice in a row on Flashcards. Spell = best score (target 100%). Quiz = official questions at 100%. Tasks = done / assigned. Sigs signed = the class's signed sig tasks (done together).</div>
     <div style="overflow-x:auto"><table class="lb"><tr><th>Pledge</th><th class="n">Faces</th>${ROLLS.map(r=>`<th class="n">${esc(r.cls.replace('Beta ',''))}</th>`).join('')}<th class="n">Quiz Q1–19</th><th class="n">Tasks</th><th class="n">Sigs signed</th></tr>
     ${rows.map(r=>`<tr><td>${esc(r.n.split(' ')[0])}${r.n===me?' <b>(you)</b>':''}</td><td class="n${r.solid>=total?' hit':''}">${r.solid}/${total}</td>${r.spell.map(pctCell).join('')}${(()=>{ const [a,b]=officialQuiz(r.n); return `<td class="n${b&&a===b?' hit':''}">${b?a+'/'+b:'—'}</td>`; })()}<td class="n${r.assigned&&r.done===r.assigned?' hit':''}">${r.done}/${r.assigned}</td><td class="n">${clsSigs}</td></tr>`).join('')}</table></div>
-    <div class="status">Spell columns: Psi, Chi, Phi, Upsilon rolls.</div></div>
+    <div class="status">Spell columns: Upsilon, Phi, Chi, Psi rolls.</div></div>
     ${me&&S.drill[me]?`<div class="editor" style="margin-top:12px"><h2>Your weak spots</h2><div class="grid" style="margin-top:6px">${S.cards.filter(c=>{const x=S.drill[me][c.photo]; return x&&x.last!=='ok';}).map(c=>{const x=S.drill[me][c.photo]; return `<div class="tile"><img src="${IMG(c.photo)}" alt=""><div>${esc(c.name)}<small>${x.last==='miss'?'name wrong':'facts shaky'} · ${x.miss} wrong · ${x.some||0} partial</small></div></div>`;}).join('')||'<div class="status">No misses on record. Either you are cracked or you have not drilled.</div>'}</div></div>`:''}`;
   acctEl.querySelectorAll('[data-rw]').forEach(b=>b.onclick=()=>{ rankWeek=+b.dataset.rw; renderAcct(); });
 }
@@ -822,7 +843,7 @@ function renderRollBoard(){
 }
 
 // ---------- error safety net ----------
-function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06l'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
+function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06m'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
   b.innerHTML='<span style="flex:1;word-break:break-word">Something broke: '+esc(msg)+'</span><button onclick="location.reload()" style="border:0;background:#fff;color:#B23A3A;border-radius:8px;padding:6px 10px;font:600 13px \'Public Sans\',sans-serif;cursor:pointer">Reload</button><button onclick="document.getElementById(\'errbar\').remove()" style="border:0;background:transparent;color:#fff;font-size:18px;cursor:pointer">×</button>'; }
 window.addEventListener('error', e=>{ showErr((e.message||'error')+' @'+(e.lineno||'?')); try{ render(); }catch(x){} });
 window.addEventListener('unhandledrejection', e=>{ showErr('async: '+((e.reason&&e.reason.message)||e.reason||'error')); });
