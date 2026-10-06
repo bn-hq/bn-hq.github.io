@@ -244,3 +244,18 @@ header small{color:var(--ink2);font-size:12px;text-transform:uppercase;letter-sp
 .hb .hv small{font-size:11px;color:var(--ink2);font-weight:500}
 .infg{margin:6px 0 2px;padding:8px 12px;border:1px dashed var(--line);border-radius:12px;font-size:14px;font-weight:600}
 .goals b.ok{color:var(--good)} .goals b.no{color:var(--ink2)}
+.facts span{white-space:pre-line}
+.dash{display:grid;gap:10px;margin-top:10px}
+@media (min-width:640px){.dash{grid-template-columns:1fr 1fr}}
+.dash.light{--panel:#FFFFFF;--ink:#1B1526;--ink2:#5B5468;--line:#DAD5E3;--bad:#B23A3A;background:#F3F1F7;padding:10px;border-radius:14px;color:#1B1526}
+.dcard{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:13px;color:var(--ink)}
+.dtop{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.dtop b{font-family:"Bricolage Grotesque",sans-serif;font-size:15px}
+.dtop .small{min-height:44px}
+.dstat{color:var(--ink2);margin:4px 0 2px;line-height:1.4}
+.dstat b{color:var(--ink)}
+.dday{margin-top:8px;font:600 11px "Public Sans",sans-serif;text-transform:uppercase;letter-spacing:.06em;color:var(--ink2)}
+.dday.late{color:var(--bad)}
+.dcard ul{margin:2px 0 0;padding-left:18px}
+.dcard li{margin:1px 0}
+.dcard li span{color:var(--ink2)}
