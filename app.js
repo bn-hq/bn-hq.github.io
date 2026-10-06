@@ -408,9 +408,10 @@ function parseDue(ws, base){
   return r;
 }
 function parseTime(ws){
-  // reads "7am", "8:30pm", "7 pm", "noon" or "at 7" off the end of ws; no am/pm: 1-7 and 12 are PM, 8-11 AM. Returns {time:'HH:MM', n} or null
+  // reads "7am", "8:30pm", "7 pm", "noon", "midnight" (11:59 PM) or "at 7" off the end of ws; no am/pm: 1-7 and 12 are PM, 8-11 AM. Returns {time:'HH:MM', n} or null
   const L=ws.map(w=>w.toLowerCase().replace(/[.,!]+$/,'')), k=L.length; if(!k) return null; let m, n=1;
   if(L[k-1]==='noon') m=['','12','00','pm'];
+  else if(L[k-1]==='midnight') m=['','11','59','pm'];
   else if(k>=2&&/^(am|pm)$/.test(L[k-1])&&/^\d{1,2}(:\d{2})?$/.test(L[k-2])){ m=(L[k-2]+L[k-1]).match(/^(\d{1,2})(?::(\d{2}))?(am|pm)$/); n=2; }
   else m=L[k-1].match(/^(\d{1,2})(?::(\d{2}))?(am|pm)$/);
   if(!m&&k>=2&&L[k-2]==='at') { m=L[k-1].match(/^(\d{1,2})(?::(\d{2}))?()$/); }
@@ -419,7 +420,7 @@ function parseTime(ws){
   if(k>n&&(L[k-n-1]==='at'||L[k-n-1]==='by')) n++;
   return {time:String(h).padStart(2,'0')+':'+String(mi).padStart(2,'0'), n};
 }
-const timeText = t => { if(!t) return ''; let [h,m]=t.split(':').map(Number); const ap=h>=12?'pm':'am'; h=h%12||12; return h+(m?':'+String(m).padStart(2,'0'):'')+ap; };
+const timeText = t => { if(!t) return ''; if(t==='23:59') return 'midnight'; let [h,m]=t.split(':').map(Number); const ap=h>=12?'pm':'am'; h=h%12||12; return h+(m?':'+String(m).padStart(2,'0'):'')+ap; };
 function parseTask(line, base){
   base=base||today(); const who=[], bad=[], rest=[]; let all=false;
   for(const w of String(line).replace(/^\s*([-*•]|\d+[.)])\s+/,'').trim().split(/\s+/)){ if(/^@\S+/.test(w)){ const n=atWho(w.slice(1)); if(n==='*') all=true; else if(n){ if(!who.includes(n)) who.push(n); } else bad.push(w); } else if(w) rest.push(w); }
@@ -901,7 +902,7 @@ function renderRollBoard(){
 }
 
 // ---------- error safety net ----------
-function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06q'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
+function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06r'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
   b.innerHTML='<span style="flex:1;word-break:break-word">Something broke: '+esc(msg)+'</span><button onclick="location.reload()" style="border:0;background:#fff;color:#B23A3A;border-radius:8px;padding:6px 10px;font:600 13px \'Public Sans\',sans-serif;cursor:pointer">Reload</button><button onclick="document.getElementById(\'errbar\').remove()" style="border:0;background:transparent;color:#fff;font-size:18px;cursor:pointer">×</button>'; }
 window.addEventListener('error', e=>{ showErr((e.message||'error')+' @'+(e.lineno||'?')); try{ render(); }catch(x){} });
 window.addEventListener('unhandledrejection', e=>{ showErr('async: '+((e.reason&&e.reason.message)||e.reason||'error')); });
