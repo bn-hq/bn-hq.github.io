@@ -15,7 +15,7 @@ Tabs:
 Data (cards, tasks, facts, guide, scores) is in a Firebase database, not in this repo. The site reads and writes it directly; every write goes through `commit()` in app.js and is logged.
 
 - `cards/<photo>` – one per brother: `name`, `full` (official name), `cls`, facts fields, `extra`, and an optional `sig`: `{status: none|requested|confirmed|done|signed, task, difficulty (1-10), requestedAt, confirmedAt, doneAt, signedAt, notes}`. Only `signed` counts as complete. Sig tasks have no owner: the whole class does each one together.
-- `tasks/<id>` – `{id, title, due, notes, by, at, done: {name: isoTime}, who?: [names]}`. Missing or empty `who` means the whole class. Missing `due` means ongoing (never overdue, not in weekly %).
+- `tasks/<id>` – `{id, title, due, notes, by, at, done: {name: isoTime}, who?: [names]}`. Missing or empty `who` means the whole class. Missing `due` means ongoing (never overdue, not in weekly %). `repeat: 'daily'` (+ `time`) tasks show every day and reset daily: `done[name]` is the date done; `auto: 'quiz'` ones count as done on any day with a Quizzes or Spell attempt.
 - `recitals` – `{who, at, passage, pct}`. `passage` is `roll:<class>` for Spell (older entries are from the removed Recite page).
 - `quiz` – `{sets: {setId: {title, order, both?, note?, items: {id: {q, a, alt?: [..], order}}}}}`. The PCP edits it in the app; items with an empty answer are hidden from quizzes. `both` sets are asked both ways. Attempts are `recitals` with passage `quiz:<set>:<item>`.
 

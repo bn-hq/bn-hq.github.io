@@ -259,3 +259,4 @@ header small{color:var(--ink2);font-size:12px;text-transform:uppercase;letter-sp
 .dcard ul{margin:2px 0 0;padding-left:18px}
 .dcard li{margin:1px 0}
 .dcard li span{color:var(--ink2)}
+.dstat b.miss{color:var(--bad)}
