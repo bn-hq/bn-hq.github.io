@@ -508,6 +508,25 @@ function renderTasks(){
 
 // ---------- accountability ----------
 const acctEl=document.getElementById('acct');
+let rankWeek=0;
+function weekPoints(n, ws){
+  // points for the week starting ws (Monday), from timestamps already stored
+  const we=addDays(ws,6), inWk=ts=>{ if(!ts) return false; const d=isoDay(ts); return d>=ws&&d<=we; };
+  const tasks=S.tasks.filter(t=>inWk((t.done||{})[n])).length;
+  const sigs=S.cards.filter(c=>c.sig&&c.sig.owner===n&&c.sig.status==='signed'&&inWk(c.sig.signedAt)).length;
+  const perfect=S.recitals.filter(r=>r.who===n&&r.pct===100&&inWk(r.at)).length;
+  const faces=Object.values(S.drill[n]||{}).filter(x=>x.last==='ok'&&(x.streak||0)>=2&&inWk(x.at)).length;
+  return {n, tasks, sigs, perfect, faces, pts:tasks+3*sigs+perfect+faces};
+}
+function rankHtml(){
+  const ws=addDays(weekStart(today()),-7*rankWeek), rows=PC().map(n=>weekPoints(n,ws)).sort((a,b)=>b.pts-a.pts||a.n.localeCompare(b.n));
+  const why=r=>[r.tasks&&r.tasks+' task'+(r.tasks===1?'':'s'),r.sigs&&r.sigs+' sig'+(r.sigs===1?'':'s'),r.perfect&&r.perfect+' perfect',r.faces&&r.faces+' face'+(r.faces===1?'':'s')].filter(Boolean).join(' · ');
+  return `<div class="editor" style="margin-top:12px"><h2>Weekly ranking</h2>
+    <div class="sub" style="margin-top:0"><button data-rw="0" aria-pressed="${!rankWeek}">This week</button><button data-rw="1" aria-pressed="${!!rankWeek}">Last week</button></div>
+    <div class="status">${esc(dayLabel(ws).replace(/^\w+, /,''))} – ${esc(dayLabel(addDays(ws,6)).replace(/^\w+, /,''))}. 1 point per task checked off, 3 per sig task you own that gets signed, 1 per 100% Spell or Recite, 1 per face that turns solid.</div>
+    ${rows[0].pts?'':'<div class="status">No points yet. The top 3 show once someone scores.</div>'}<div class="podium">${rows.slice(0,rows[0].pts?3:0).map((r,i)=>`<div class="pod"><span class="pl">${i+1}</span><div><b>${esc(r.n)}${r.n===me?' (you)':''}</b><small>${esc(why(r))||'No points yet'}</small></div><span class="pts">${r.pts}</span></div>`).join('')}</div>
+    <table class="lb">${rows.slice(rows[0].pts?3:0).map((r,i)=>`<tr><td class="n" style="width:2em;text-align:left">${i+(rows[0].pts?4:1)}</td><td>${esc(r.n)}${r.n===me?' <b>(you)</b>':''}</td><td class="n">${r.pts}</td></tr>`).join('')}</table></div>`;
+}
 function renderAcct(){
   const pc=PC(); const total=S.cards.length; const P=S.passages;
   const solidOf=n=>Object.values(S.drill[n]||{}).filter(x=>x.last==='ok'&&(x.streak||0)>=2).length;
@@ -520,12 +539,13 @@ function renderAcct(){
     return {n,solid,spell,rec,done,assigned:mine.length,hits};
   }).sort((a,b)=>b.hits-a.hits||b.solid-a.solid);
   const pctCell=b=>`<td class="n${b===100?' hit':''}">${b===null?'—':b+'%'}</td>`;
-  acctEl.innerHTML=`<div class="editor" style="margin-top:12px"><h2>Where everyone stands</h2>
+  acctEl.innerHTML=rankHtml()+`<div class="editor" style="margin-top:12px"><h2>Where everyone stands</h2>
     <div class="status">Green = target hit. Faces = brothers rated 5 twice in a row. Spell and Recite = best score (target 100%). Tasks = done / assigned.</div>
     <div style="overflow-x:auto"><table class="lb"><tr><th>Pledge</th><th class="n">Faces</th>${ROLLS.map(r=>`<th class="n">${esc(r.cls.replace('Beta ',''))}</th>`).join('')}${P.map(p=>`<th class="n">${esc(p.title.replace('Ideal ',''))}</th>`).join('')}<th class="n">Tasks</th></tr>
     ${rows.map(r=>`<tr><td>${esc(r.n.split(' ')[0])}${r.n===me?' <b>(you)</b>':''}</td><td class="n${r.solid>=total?' hit':''}">${r.solid}/${total}</td>${r.spell.map(pctCell).join('')}${r.rec.map(pctCell).join('')}<td class="n${r.assigned&&r.done===r.assigned?' hit':''}">${r.done}/${r.assigned}</td></tr>`).join('')}</table></div>
     <div class="status">Spell columns: Psi, Chi, Phi, Upsilon rolls. Recite columns: Purpose, Ideal Member, Ideal Chapter.</div></div>
     ${me&&S.drill[me]?`<div class="editor" style="margin-top:12px"><h2>Your weak spots</h2><div class="grid" style="margin-top:6px">${S.cards.filter(c=>{const x=S.drill[me][c.photo]; return x&&x.last!=='ok';}).map(c=>{const x=S.drill[me][c.photo]; return `<div class="tile"><img src="${IMG(c.photo)}" alt=""><div>${esc(c.name)}<small>${x.last==='miss'?'name wrong':'facts shaky'} · ${x.miss} wrong · ${x.some||0} partial</small></div></div>`;}).join('')||'<div class="status">No misses on record. Either you are cracked or you have not drilled.</div>'}</div></div>`:''}`;
+  acctEl.querySelectorAll('[data-rw]').forEach(b=>b.onclick=()=>{ rankWeek=+b.dataset.rw; renderAcct(); });
 }
 
 // ---------- pledge guide ----------

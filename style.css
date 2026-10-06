@@ -192,3 +192,10 @@ header small{color:var(--ink2);font-size:12px;text-transform:uppercase;letter-sp
 .sigr .nm small{display:block;color:var(--ink2);font-weight:500;font-size:12px}
 .sigr .schip{font-size:11px}
 .sigr .nx{flex:none;width:44px;height:44px;border:0;background:none;color:var(--ink);font-size:20px;cursor:pointer}
+.podium{display:grid;gap:6px;margin-top:10px}
+.pod{display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.pod .pl{font:800 20px "Bricolage Grotesque",sans-serif;color:var(--ink2);width:1.2em}
+.pod div{flex:1;min-width:0}
+.pod b{display:block}
+.pod small{color:var(--ink2);font-size:12px}
+.pod .pts{font:800 22px "Bricolage Grotesque",sans-serif;font-variant-numeric:tabular-nums}
