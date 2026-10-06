@@ -112,7 +112,12 @@ const today = () => isoDay(Date.now());
 const addDays = (iso,k) => { const d=new Date(iso+'T12:00:00'); d.setDate(d.getDate()+k); return d.toISOString().slice(0,10); };
 const dayLabel = iso => { const t=today(); if(iso===t) return 'Today'; if(iso===addDays(t,1)) return 'Tomorrow'; return new Date(iso+'T12:00:00').toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'}); };
 const isFor = (t,n) => !t.who || !t.who.length || t.who.includes(n);
-const isDone = (t,n) => !!(t.done||{})[n];
+const dayOf = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v)) ? String(v) : isoDay(v);
+const quizOn = (n,d) => S.recitals.some(r=>r.who===n&&/^(roll|quiz):/.test(String(r.passage||''))&&r.at&&isoDay(r.at)===d);
+const autoDone = (t,n,d) => t.auto==='quiz' && quizOn(n,d);
+// repeat:'daily' tasks reset every day: done[name] holds the date it was done; auto:'quiz' ones tick themselves when you do a Quizzes or Spell attempt that day
+const doneOn = (t,n,d) => { const x=(t.done||{})[n]; return autoDone(t,n,d) || (!!x && dayOf(x)===d); };
+const isDone = (t,n) => t.repeat==='daily' ? doneOn(t,n,today()) : !!(t.done||{})[n];
 
 // ---------- chips / tabs ----------
 const chipsEl = document.getElementById('chips');
@@ -378,6 +383,7 @@ function renderSigs(){
 const tasksEl=document.getElementById('tasks');
 const WDAYS=['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
 const dow = iso => new Date(iso+'T12:00:00').getDay();
+const repText = t => t.repeat==='daily' ? 'Every day'+(t.time?' by '+timeText(t.time):'') : '';
 const dueText = iso => { if(!iso) return 'Ongoing'; const t=today(); if(iso===t) return 'Today'; if(iso===addDays(t,1)) return 'Tomorrow'; return new Date(iso+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}).replace(',',''); };
 const first = n => String(n).split(' ')[0];
 const PCP = () => ((SEED.roster||[]).find(r=>/(^|pledge class )president\b/i.test(r.role||''))||{}).name||'';
@@ -446,14 +452,15 @@ function taskHtml(t){
   return `<div class="task ${all?'done':''}" data-id="${esc(t.id)}"><div class="t">${mine?`<label class="ck"><input type="checkbox" data-tog ${meDone?'checked':''} ${ro?'disabled':''} aria-label="${ro?esc(first(v))+(meDone?' is done':' is not done'):'Mark done'}"></label>`:''}<button class="ttl" data-edit>${esc(t.title)}</button>${isPCP()?'<button class="x" data-del aria-label="Delete task">×</button>':''}</div>
     ${t.notes?`<div class="notes">${esc(t.notes)}</div>`:''}
     <div class="bar"><i style="width:${Math.round(100*n/as.length)}%"></i></div>
-    <div class="meta"><span class="due ${late?'late':''}">${late?'Overdue · ':t.due?'Due ':''}${esc(dueText(t.due))}${t.time?' · '+timeText(t.time):''}${mine?esc(countText(countGoal(t,v))):''}${mine&&t.due&&examOn(v,t.due).length?' · exam that day':''}${mine&&meDone&&!all?` · ${ro?esc(first(v))+' is':"you're"} done, open until everyone is`:''}</span><button class="small" data-show aria-label="Who's done">${n}/${as.length} done · ${esc(whoText(t.who))} ▾</button></div>
+    <div class="meta"><span class="due ${late?'late':''}">${t.repeat?esc(repText(t))+(autoDone(t,v,today())?' · done via quiz today':''):`${late?'Overdue · ':t.due?'Due ':''}${esc(dueText(t.due))}${t.time?' · '+timeText(t.time):''}`}${mine?esc(countText(countGoal(t,v))):''}${mine&&t.due&&examOn(v,t.due).length?' · exam that day':''}${mine&&meDone&&!all?` · ${ro?esc(first(v))+' is':"you're"} done, open until everyone is`:''}</span><button class="small" data-show aria-label="Who's done">${n}/${as.length} done · ${esc(whoText(t.who))} ▾</button></div>
     ${isPCP()&&waiting.length&&!all?`<div class="notes">Waiting on: ${waiting.map(x=>esc(first(x))).join(', ')}</div>`:''}
     <div class="who" data-who hidden>${as.map(x=>`<span class="${isDone(t,x)?'':'no'}">${isDone(t,x)?'✓ ':''}${esc(first(x))}</span>`).join('')}</div></div>`;
 }
 function bindTasks(el, rerender){
   const T=id=>S.tasks.find(x=>x.id===id), idOf=b=>b.closest('[data-id]').dataset.id;
   el.querySelectorAll('[data-tog]').forEach(b=>b.onchange=async()=>{ if(!me){askName();return;} const t=T(idOf(b)), was=isDone(t,me); b.disabled=true;
-    await commit({who:me,at:when(),card:'Tasks',changes:[{field:t.title,from:was?'done':'not done',to:was?'not done':'done'}]},st=>{ const x=st.tasks.find(y=>y.id===t.id); x.done=x.done||{}; if(was) delete x.done[me]; else x.done[me]=when(); }); rerender(); });
+    if(was&&autoDone(t,me,today())){ toast('Done automatically: you did a quiz today.'); b.checked=true; b.disabled=false; return; }
+    await commit({who:me,at:when(),card:'Tasks',changes:[{field:t.title,from:was?'done':'not done',to:was?'not done':'done'}]},st=>{ const x=st.tasks.find(y=>y.id===t.id); x.done=x.done||{}; if(was) delete x.done[me]; else x.done[me]=t.repeat==='daily'?today():when(); }); rerender(); });
   el.querySelectorAll('[data-show]').forEach(b=>b.onclick=()=>{ const w=b.closest('.task').querySelector('[data-who]'); w.hidden=!w.hidden; });
   el.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>{ const t=T(idOf(b)); tEdit=t.id; tWho=(t.who||[]).slice(); rerender(); const i=el.querySelector('#et'); if(i){ i.focus(); i.setSelectionRange(i.value.length,i.value.length); } });
   el.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{ if(!isPCP()){ toast('Only the PCP can remove tasks.'); return; } const t=T(idOf(b)), keep=Object.assign({},t); delete keep._k;
@@ -549,7 +556,7 @@ const LETTERS=[[97,'A+'],[93,'A'],[90,'A−'],[87,'B+'],[83,'B'],[80,'B−'],[77
 const letter = pct => LETTERS.find(([min])=>pct>=min)[1];
 function gradeFor(n){
   // tasks: share done of everything due before today (tasks finished early count too); informals: Done vs target, capped at 100%. Equal weight.
-  const t0=today(), xs=S.tasks.filter(t=>isFor(t,n)&&(isDone(t,n)||(t.due&&t.due<t0))), td=xs.filter(t=>isDone(t,n)).length;
+  const t0=today(), xs=S.tasks.filter(t=>isFor(t,n)&&!t.repeat&&(isDone(t,n)||(t.due&&t.due<t0))), td=xs.filter(t=>isDone(t,n)).length;
   const I=informals(), c=I&&I[n], parts=[];
   const tp=xs.length?td/xs.length:null; if(tp!==null) parts.push(tp);
   const ip=c?Math.min(1,c.done/c.target):null; if(ip!==null) parts.push(ip);
@@ -640,6 +647,7 @@ function planFor(n, base){
   // day-by-day plan computed from tasks: dated on their date, overdue under catch up; undated tasks are ongoing and sit in their own list
   base=base||today(); const days={}, catchup=[], ongoing=[], put=(d,t)=>(days[d]=days[d]||[]).push(t);
   for(const t of S.tasks.filter(t=>isFor(t,n))){ const dd=doneDay(t,n);
+    if(t.repeat==='daily'){ for(let d=base, end=periodAt().endDay; d<=end; d=addDays(d,1)) put(d,t); continue; }
     if(!t.due){ if(!dd||dd===base) ongoing.push(t); }
     else if(t.due>=base) put(t.due,t); else if(!dd||dd===base) catchup.push(t); }
   return {catchup, ongoing, days:Object.keys(days).sort().map(d=>[d,days[d].sort((a,b)=>(a.time||'99:99')<(b.time||'99:99')?-1:1)])};
@@ -671,7 +679,7 @@ function countGoal(t, n){
   return {per:Math.ceil(left/daysTo(today(),t.due)), left, prog:p, target:+t.target};
 }
 const countText = g => g ? (g.left?` · do ${g.per} today (${g.prog}/${g.target})`:` · ${g.prog}/${g.target} done`) : '';
-const checkRow = (t,n,late) => `<div class="task" data-id="${esc(t.id)}"><div class="t"><label class="ck"><input type="checkbox" data-tog ${isDone(t,n)?'checked':''} aria-label="Mark done"></label><span class="ttl">${esc(t.title)}</span><span class="due ${late?'late':''}">${esc(dueText(t.due))}${t.time?' · '+timeText(t.time):''}${esc(countText(countGoal(t,n)))}${t.due&&examOn(n,t.due).length?'<br>exam that day':''}</span></div></div>`;
+const checkRow = (t,n,late,day) => { const rep=t.repeat==='daily', d=day||today(), dn=rep?doneOn(t,n,d):isDone(t,n); return `<div class="task" data-id="${esc(t.id)}"><div class="t"><label class="ck"><input type="checkbox" data-tog ${dn?'checked':''} ${rep&&d!==today()?'disabled':''} aria-label="Mark done"></label><span class="ttl">${esc(t.title)}</span><span class="due ${late?'late':''}">${rep?esc(repText(t))+(autoDone(t,n,d)?' · done via quiz':''):esc(dueText(t.due))+(t.time?' · '+timeText(t.time):'')}${esc(countText(countGoal(t,n)))}${t.due&&examOn(n,t.due).length?'<br>exam that day':''}</span></div></div>`; };
 function renderToday(){
   if(!me){ todayEl.innerHTML=`<div class="editor"><h2>Hi there</h2><div class="status">Pick your name to see your plan.</div><div class="ctrl"><button class="btn primary" id="tpick">Pick your name</button></div></div>`+weeklyHtml(); todayEl.querySelector('#tpick').onclick=askName; return; }
   const t0=today(), t1=addDays(t0,1), plan=planFor(me,t0), P=periodAt(), wk=weekStats([me],P), cls=weekStats(PC(),P), st=streakFor(me,t0);
@@ -693,7 +701,7 @@ function renderToday(){
       <div class="ctrl"><button class="btn primary" id="tdrill">Study flashcards</button></div></div>
     ${(()=>{ const nx=sigCards().filter(c=>['confirmed','done'].includes(sigOf(c).status)).sort((a,b)=>(+sigOf(a).difficulty||99)-(+sigOf(b).difficulty||99)||a.name.localeCompare(b.name)); return nx.length?`<h3 class="sec">Next sig tasks <small>${nx.length} in progress · easiest first</small></h3>${nx.slice(0,5).map(c=>sigRow(c,true)).join('')}${nx.length>5?`<div class="status"><button class="small" id="allsigs">See all ${nx.length}</button></div>`:''}`:''; })()}
     ${plan.catchup.length?`<h3 class="sec">Catch up <small>${plan.catchup.filter(t=>isDone(t,me)).length} of ${plan.catchup.length} done</small></h3>${plan.catchup.map(t=>checkRow(t,me,true)).join('')}`:''}
-    ${days.length?days.map(([d,ts])=>`<h3 class="sec">${esc(dayName(d))}</h3>${ig&&d<=P.endDay?`<div class="infg">${ig.left?`Informals: do ${ig.per} ${d===t0?'today':'this day'}`:'Informals: target hit'} (${ig.done}/${ig.target} done)${d===t0&&ig.toEmail?`<br>Emails to send: ${ig.toEmail}`:''}</div>`:''}${ts.length?`<div class="status" style="margin:0 0 2px">${goal(d,ts)}</div>`:''}${ts.map(t=>checkRow(t,me,false)).join('')}`).join('')
+    ${days.length?days.map(([d,ts])=>`<h3 class="sec">${esc(dayName(d))}</h3>${ig&&d<=P.endDay?`<div class="infg">${ig.left?`Informals: do ${ig.per} ${d===t0?'today':'this day'}`:'Informals: target hit'} (${ig.done}/${ig.target} done)${d===t0&&ig.toEmail?`<br>Emails to send: ${ig.toEmail}`:''}</div>`:''}${ts.length?`<div class="status" style="margin:0 0 2px">${goal(d,ts)}</div>`:''}${ts.map(t=>checkRow(t,me,false,d)).join('')}`).join('')
       :plan.catchup.length?'':`<div class="reveal" style="margin-top:14px;text-align:center"><div class="big">Nothing due 🎉</div><div class="ctrl"><button class="btn" id="tstudy">Go to Study</button></div></div>`}
     ${plan.ongoing.length?`<details class="ogd" ${ongoingOpen?'open':''}><summary><h3 class="sec">Ongoing <small>${plan.ongoing.length}</small></h3></summary>${plan.ongoing.map(t=>checkRow(t,me,false)).join('')}</details>`:''}`;
   const od=todayEl.querySelector('.ogd'); if(od) od.ontoggle=()=>{ ongoingOpen=od.open; };
@@ -724,10 +732,10 @@ let dashLight=false; try{ dashLight=localStorage.getItem('bn-dash')==='light'; }
 function openTasksOf(n){
   // everything assigned to n (incl. whole-class) not yet checked by n, grouped by due day; undated last as Ongoing
   const t0=today(), xs=S.tasks.filter(t=>isFor(t,n)&&!isDone(t,n)).sort((a,b)=>((a.due||'9999')+(a.time||'99:99'))<((b.due||'9999')+(b.time||'99:99'))?-1:1), g=[];
-  for(const t of xs){ const k=!t.due?'Ongoing':t.due<t0?'Overdue':t.due===t0?'Today':t.due===addDays(t0,1)?'Tomorrow':shortDay(t.due); const l=g[g.length-1]; if(l&&l[0]===k) l[1].push(t); else g.push([k,[t]]); }
+  for(const t of xs){ const k=t.repeat?'Every day':!t.due?'Ongoing':t.due<t0?'Overdue':t.due===t0?'Today':t.due===addDays(t0,1)?'Tomorrow':shortDay(t.due); const l=g[g.length-1]; if(l&&l[0]===k) l[1].push(t); else g.push([k,[t]]); }
   return g;
 }
-const dueBit = t => !t.due ? 'ongoing' : (t.due<today()?'overdue, due ':'due ')+shortDay(t.due)+(t.time?', '+timeText(t.time):'');
+const dueBit = t => t.repeat ? repText(t).toLowerCase() : !t.due ? 'ongoing' : (t.due<today()?'overdue, due ':'due ')+shortDay(t.due)+(t.time?', '+timeText(t.time):'');
 function dashText(r){ const g=openTasksOf(r.name); return `#${r.n} ${first(r.name)} — tasks\n`+(g.length?g.flatMap(([,ts])=>ts).map(t=>`• ${t.title} (${dueBit(t)})`).join('\n'):'• Nothing open'); }
 async function copyText(txt){
   try{ await navigator.clipboard.writeText(txt); }catch(e){ const ta=document.createElement('textarea'); ta.value=txt; ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.select(); try{ document.execCommand('copy'); }catch(x){} ta.remove(); }
@@ -739,7 +747,7 @@ function renderDash(){
     <div class="status">${esc(P.label)} · open = assigned to them (incl. whole class) and not checked off yet</div>
     <div class="dash ${dashLight?'light':''}">${R.map(r=>{ const c=I&&I[r.name], w=weekStats([r.name],P), g=openTasksOf(r.name), open=g.reduce((a,[,ts])=>a+ts.length,0);
       return `<div class="dcard" data-n="${r.n}"><div class="dtop"><b>#${r.n} ${esc(r.name)}</b><button class="small" data-dcopy="${r.n}">Copy tasks</button></div>
-        <div class="dstat">${c?`Informals: <b>${c.done}/${c.target}</b> done · ${c.confirmed} confirmed · ${c.emailed} emailed`:'Informals: not synced yet'}<br>This period: <b>${w.done}</b> done · <b>${w.tot-w.done}</b> open · ${open} open overall</div>
+        <div class="dstat">${c?`Informals: <b>${c.done}/${c.target}</b> done · ${c.confirmed} confirmed · ${c.emailed} emailed`:'Informals: not synced yet'}<br>Yesterday's quiz: ${quizOn(r.name,addDays(today(),-1))?'<b>done</b>':'<b class="miss">missed</b>'} · today: ${quizOn(r.name,today())?'<b>done</b>':'not yet'}<br>This period: <b>${w.done}</b> done · <b>${w.tot-w.done}</b> open · ${open} open overall</div>
         ${g.length?g.map(([k,ts])=>`<div class="dday${k==='Overdue'?' late':''}">${esc(k)}</div><ul>${ts.map(t=>`<li>${esc(t.title)}${t.due?` <span>· ${esc(shortDay(t.due))}${t.time?' · '+timeText(t.time):''}</span>`:''}</li>`).join('')}</ul>`).join(''):'<div class="dstat">Nothing open.</div>'}</div>`; }).join('')}</div>`;
   dashEl.querySelector('#dcopyall').onclick=()=>copyText(R.map(dashText).join('\n\n'));
   dashEl.querySelector('#dlight').onclick=()=>{ dashLight=!dashLight; try{ localStorage.setItem('bn-dash',dashLight?'light':'dark'); }catch(e){} renderDash(); };
@@ -893,7 +901,7 @@ function renderRollBoard(){
 }
 
 // ---------- error safety net ----------
-function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06p'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
+function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06q'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
   b.innerHTML='<span style="flex:1;word-break:break-word">Something broke: '+esc(msg)+'</span><button onclick="location.reload()" style="border:0;background:#fff;color:#B23A3A;border-radius:8px;padding:6px 10px;font:600 13px \'Public Sans\',sans-serif;cursor:pointer">Reload</button><button onclick="document.getElementById(\'errbar\').remove()" style="border:0;background:transparent;color:#fff;font-size:18px;cursor:pointer">×</button>'; }
 window.addEventListener('error', e=>{ showErr((e.message||'error')+' @'+(e.lineno||'?')); try{ render(); }catch(x){} });
 window.addEventListener('unhandledrejection', e=>{ showErr('async: '+((e.reason&&e.reason.message)||e.reason||'error')); });
