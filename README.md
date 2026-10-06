@@ -6,10 +6,10 @@ Three files, no build step:
 
 Tabs:
 
-- **Today** – Weekly progress (informals per pledge vs target, this week's goals, tasks done this week; visible to everyone), then your plan for the days ahead: catch-up items, a checklist per day, ongoing (undated) tasks folded below, your % done this week (resets Monday), streak, whole-class bar, milestones due 10/12, sig tasks you own, Start drill.
+- **Today** – Weekly progress (informals per pledge vs target, this week's goals, tasks done this week; visible to everyone), then your plan for the days ahead: catch-up items, a checklist per day, ongoing (undated) tasks folded below, your % done this period (resets after each meeting: "Meeting #n" tasks at 8:30 PM, else Sunday 11:59 PM), streak, whole-class bar, milestones due 10/12, sig tasks you own, Start drill.
 - **Study** – Flashcards (cards, all faces, directory; after flipping rate Didn't know / Partly / Knew it; Smart or In order; classes Upsilon → Phi → Chi → Psi → Omega in official roll order) Spell (type a class roll from memory, same order) and Quizzes (question sets; In order / Shuffle / Missed only).
 - **Tasks** – Tasks: everyone sees their own board (their tasks + whole-class tasks). The PCP can switch to anyone's board and is the only one who can add (one-line adder: `@4`/`@Tim`/`@me`, `fri`/`10/12`/`in 3 days`, no date = ongoing; on a person's board no `@` means that person, or tap Add to all; paste many lines at once) and Sig tasks (To request / In progress / Signed).
-- **Scores** – milestones (All names = every face solid; Quiz 100% = Spell 100% on all 4 rolls; due 10/12, set in `MILESTONES` in app.js), weekly ranking (this week / last week; tasks, 100% Spell attempts, faces turning solid), then the proficiency table.
+- **Scores** – milestones (All names = every face solid; Quiz 100% = Spell 100% on all 4 rolls; due 10/12, set in `MILESTONES` in app.js), weekly ranking (meeting to meeting, this week / last week; tasks, 100% Spell attempts, faces turning solid), then the proficiency table.
 - **Info** – Guide, Facts, Edit history.
 
 Data (cards, tasks, facts, guide, scores) is in a Firebase database, not in this repo. The site reads and writes it directly; every write goes through `commit()` in app.js and is logged.
