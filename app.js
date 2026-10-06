@@ -9,11 +9,11 @@ function fromDb(d){
   d=d||{};
   const cards=objToArr(d.cards,'order'); cards.forEach(c=>{ c.extra=c.extra||{}; });
   const byAtDesc=(a,b)=>(a.at<b.at?1:-1);
-  return { version:d.version||0, cards, log:objToArr(d.log).sort(byAtDesc), facts:objToArr(d.facts,'order'), tasks:objToArr(d.tasks).sort((a,b)=>(a.due||'9999')<(b.due||'9999')?-1:1), recitals:objToArr(d.recitals).sort(byAtDesc), guide:objToArr(d.guide,'order'), passages: d.passages? objToArr(d.passages,'order') : SEED.passages, drill:d.drill||{}, informals:d.informals||null, exams:d.exams||{}, quiz:d.quiz||null, recaps:d.recaps||{}, pending:objToArr(d.pending).sort((a,b)=>(a.at<b.at?-1:1)) };
+  return { version:d.version||0, cards, log:objToArr(d.log).sort(byAtDesc), facts:objToArr(d.facts,'order'), tasks:objToArr(d.tasks).sort((a,b)=>(a.due||'9999')<(b.due||'9999')?-1:1), recitals:objToArr(d.recitals).sort(byAtDesc), guide:objToArr(d.guide,'order'), passages: d.passages? objToArr(d.passages,'order') : SEED.passages, drill:d.drill||{}, informals:d.informals||null, exams:d.exams||{}, quiz:d.quiz||null, recaps:d.recaps||{}, pending:objToArr(d.pending).sort((a,b)=>(a.at<b.at?-1:1)), commitments:objToArr(d.commitments) };
 }
 async function dbGet(path){ const r=await fetch(DB+'/'+path+'.json',{cache:'no-store'}); if(!r.ok) throw new Error('read '+r.status); return r.json(); }
 async function dbWrite(method,path,body){ const r=await fetch(DB+'/'+path+'.json',{method,body:body===undefined?undefined:JSON.stringify(body)}); if(!r.ok) throw new Error('write '+r.status); return r.json(); }
-const KEYS=['version','cards','log','facts','tasks','recitals','passages','drill','guide','informals','exams','quiz','recaps','pending'];
+const KEYS=['version','cards','log','facts','tasks','recitals','passages','drill','guide','informals','exams','quiz','recaps','pending','commitments'];
 async function loadPhotos(){
   if(Object.keys(URIS).length) return;
   try{ const c=localStorage.getItem('bn-photos'); if(c){ URIS=JSON.parse(c); if(Object.keys(URIS).length) { checkPhotoVersion(); return; } } }catch(e){}
@@ -317,9 +317,23 @@ function recapRepliesHtml(){
   const rep=R[d].replied||{}, yes=PC().filter(n=>rep[n]), no=PC().filter(n=>!rep[n]);
   return `<div class="editor"><h2>Replied? <small class="status">recap of ${esc(shortDay(d))}</small></h2><ul class="goals">${PC().map(n=>`<li><span>${esc(first(n))}</span><b class="${rep[n]?'ok':'no'}">${rep[n]?'Replied':'Not yet'}</b></li>`).join('')}</ul><div class="status">${yes.length} of ${PC().length} replied${R[d].checkedAt?` · checked ${esc(fmt(R[d].checkedAt))}`:''}</div></div>`;
 }
+let cmtOpen=false;
 function examsTomorrowHtml(){
-  if(!isPCP()||!S.exams||!Object.keys(S.exams).length) return ''; const d=addDays(today(),1), rows=PC().flatMap(n=>examOn(n,d).map(e=>[n,e]));
-  return `<div class="editor"><h2>Exams tomorrow</h2>${rows.length?`<ul class="goals">${rows.map(([n,e])=>`<li><span>${esc(first(n))} · ${esc(e.course||'Exam')}</span><b>${esc(e.time||'')}</b></li>`).join('')}</ul>`:'<div class="status">Nobody has an exam tomorrow.</div>'}</div>`;
+  // commitments: anyone can add a busy time (instant, no review); exams tomorrow are PCP-only
+  const t0=today(), d1=addDays(t0,1), C=(S.commitments||[]).filter(c=>c.date&&c.date>=t0).sort((a,b)=>(a.date+(a.time||''))<(b.date+(b.time||''))?-1:1);
+  const ex=isPCP()&&S.exams&&Object.keys(S.exams).length?PC().flatMap(n=>examOn(n,d1).map(e=>[n,e])):null;
+  return `<div class="editor" id="cmts"><h2>Exams + commitments</h2>
+    ${ex?`<h3 class="wh">Exams tomorrow</h3>${ex.length?`<ul class="goals">${ex.map(([n,e])=>`<li><span>${esc(first(n))} · ${esc(e.course||'Exam')}</span><b>${esc(e.time||'')}</b></li>`).join('')}</ul>`:'<div class="status">Nobody has an exam tomorrow.</div>'}<h3 class="wh">Commitments</h3>`:''}
+    ${C.length?`<ul class="goals">${C.map(c=>`<li><span>${esc(dueText(c.date))}${c.time?' · '+esc(c.time):''} · ${esc(c.text)} <small class="status">(${esc(first(c.who||''))})</small></span>${c.who===me||isPCP()?`<button class="x" data-cdel="${esc(c._k)}" aria-label="Delete commitment">×</button>`:''}</li>`).join('')}</ul>`:'<div class="status">No upcoming commitments.</div>'}
+    ${cmtOpen?`<div class="field" style="margin-top:10px"><input id="ctext" placeholder="What (e.g. Interview)" autocomplete="off"></div><div class="row cform"><input id="cdate" type="date" value="${d1}" aria-label="Date"><input id="ctime" placeholder="Time (optional, e.g. 2–3 PM)" autocomplete="off" aria-label="Time"></div><div class="ctrl"><button class="btn" id="ccancel">Cancel</button><button class="btn ok" id="cadd">Add</button></div>`
+      :`<div class="ctrl"><button class="btn" id="copen">+ Add a commitment</button></div>`}</div>`;
+}
+function bindCommitments(root, rerender){
+  const o=root.querySelector('#copen'); if(o) o.onclick=()=>{ if(!me){ askName(); return; } cmtOpen=true; rerender(); const t=root.querySelector('#ctext'); if(t) t.focus(); };
+  const cc=root.querySelector('#ccancel'); if(cc) cc.onclick=()=>{ cmtOpen=false; rerender(); };
+  const ad=root.querySelector('#cadd'); if(ad) ad.onclick=async()=>{ const text=root.querySelector('#ctext').value.trim(), date=root.querySelector('#cdate').value, time=root.querySelector('#ctime').value.trim(); if(!text||!date){ toast('Add what and when.'); return; }
+    ad.disabled=true; try{ await dbWrite('POST','commitments',Object.assign({who:me,text,date,at:when()},time?{time}:{})); cmtOpen=false; await refresh(); toast('Added for everyone'); }catch(e){ toast('Save failed: '+(e.message||e)); ad.disabled=false; return; } rerender(); };
+  root.querySelectorAll('[data-cdel]').forEach(b=>b.onclick=async()=>{ const c=(S.commitments||[]).find(x=>x._k===b.dataset.cdel); if(!c||!(c.who===me||isPCP())) return; b.disabled=true; try{ await dbWrite('DELETE','commitments/'+key(c._k)); await refresh(); }catch(e){ toast('Delete failed'); } rerender(); });
 }
 const informalsUpdated = () => S.informals&&S.informals.updatedAt ? 'Updated '+fmt(S.informals.updatedAt) : '';
 function informalsHtml(){
@@ -328,8 +342,9 @@ function informalsHtml(){
   const rows=PC().map(n=>[n,I[n]]), hit=rows.filter(([,c])=>c.done>=c.target).length;
   return `<div class="editor" style="margin-top:12px"><h2>Informals · ${esc(dueText(INFORMALS.by))}</h2>
     <div class="status">From the Informals Tracker · ${esc(informalsUpdated())}. At target: <b>${hit} of ${rows.length}</b>. Target ${INFORMALS.target}${Object.entries(INFORMALS.targets).map(([n,v])=>`, ${esc(first(n))} ${v}`).join('')}.</div>
-    <div style="overflow-x:auto"><table class="lb"><tr><th>Pledge</th><th class="n">Done</th><th class="n">Confirmed</th><th class="n">Emailed</th></tr>
-    ${rows.map(([n,c])=>`<tr><td>${esc(first(n))}${n===me?' <b>(you)</b>':''}</td><td class="n${c.done>=c.target?' hit':''}">${c.done}/${c.target}</td><td class="n">${c.confirmed}</td><td class="n">${c.emailed}</td></tr>`).join('')}</table></div></div>`;
+    <div class="status">Pace: straight line from induction (${esc(shortDay(PACE_START))}) to ${esc(shortDay(INFORMALS.by))}, so "expected" is where you should be by today.</div>
+    <div style="overflow-x:auto"><table class="lb"><tr><th>Pledge</th><th class="n">Done</th><th class="n">Expected</th><th>Pace</th><th class="n">Conf.</th><th class="n">Emailed</th></tr>
+    ${rows.map(([n,c])=>{ const pc=pace(c.done,c.target,INFORMALS.by); return `<tr><td>${esc(first(n))}${n===me?' <b>(you)</b>':''}</td><td class="n${c.done>=c.target?' hit':''}">${c.done}/${c.target}</td><td class="n">${pc.exp}</td><td>${paceTag(pc)}</td><td class="n">${c.confirmed}</td><td class="n">${c.emailed}</td></tr>`; }).join('')}</table></div></div>`;
 }
 let SIGSHEET={};
 function sheetCard(name, cls){
@@ -502,25 +517,24 @@ function bindTasks(el, rerender){
   ed.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); save(); } if(e.key==='Escape'){ tEdit=null; rerender(); } };
 }
 function renderTasks(){
-  // everyone sees their own board; the PCP can switch to anyone's board (or Everyone) and is the only one who can add
-  const pcp=isPCP(), who=pcp?tBoard:me, fn=who?first(who):''; tView=who||me;
+  // everyone sees their own board; the PCP picks whose board (one person at a time, default themselves) and is the only one who can add
+  const pcp=isPCP(), who=pcp?(tBoard||me):me, fn=who?first(who):'', other=who&&who!==me; tView=who||me;
   const byDue=(a,b)=>{ const x=(a.due||'9999')+(a.time||'99:99'), y=(b.due||'9999')+(b.time||'99:99'); return x<y?-1:x>y?1:0; };
   const L=S.tasks.slice().sort(byDue), all=L.filter(t=>!(t.who||[]).length);
   const sec=(h,ts,empty)=>{ const dated=ts.filter(t=>t.due), og=ts.filter(t=>!t.due); return ts.length||empty?`<h3 class="sec">${h} <small>${ts.length}</small></h3>${dated.map(taskHtml).join('')}${og.length?`<div class="ongo">Ongoing <small>${og.length}</small></div>${og.map(taskHtml).join('')}`:''}${ts.length?'':`<div class="reveal">${empty}</div>`}`:''; };
-  const target=p=>{ if(!p.who.length&&!p.all&&who&&!tAll) p.who=[who]; return p; };
-  const hint=`@4 or @Tim to assign (none = ${who&&!tAll?esc(fn):'whole class'}) · fri, 10/12, in 3 days to set a due date (none = ongoing) · Enter to add`;
+  const target=p=>{ if(!p.who.length&&!p.all&&other&&!tAll) p.who=[who]; return p; }; // own board: no @ = whole class; someone else's: that person
+  const hint=`@4 or @Tim to assign (none = ${other&&!tAll?esc(fn):'whole class'}) · fri, 10/11, in 3 days to set a due date (none = ongoing) · Enter to add`;
   const focused=document.activeElement&&document.activeElement.id==='tq';
   const board = !me ? '<div class="reveal" style="margin-top:14px">Pick your name to see your tasks.</div>'
-    : who ? sec(who===me?'Just for you':'Just for '+esc(fn),L.filter(t=>(t.who||[]).includes(who)),'Nothing assigned just to '+(who===me?'you':esc(fn))+'.')+sec('Whole class',all,'No class tasks yet.')
-    : sec('Mine',L.filter(t=>(t.who||[]).includes(me)),'Nothing assigned just to you.')+sec('Whole class',all,'No class tasks yet.')+sec('Assigned to others',L.filter(t=>(t.who||[]).length&&!(t.who||[]).includes(me)));
-  tasksEl.innerHTML=(pcp?`<div class="status" style="margin-top:14px">View as</div><div class="chips" style="margin-top:4px"><button class="chip" data-bd="" aria-pressed="${!tBoard}">Everyone</button>${(SEED.roster||[]).map(r=>`<button class="chip" data-bd="${esc(r.name)}" aria-pressed="${tBoard===r.name}">#${r.n} ${esc(first(r.name))}</button>`).join('')}</div>
-    <div class="field" style="margin-top:12px"><input id="tq" placeholder="${who?'Add a task for '+esc(fn)+'…':'Add a task for the whole class…'}" autocomplete="off" enterkeyhint="done" value="${esc(tDraft)}">
-    ${who?`<div class="chips" style="margin-top:6px"><button class="chip" id="tall" aria-pressed="${tAll}">Add to all</button></div>`:''}${who&&who!==me?`<div class="status">Viewing ${esc(fn)}'s board. Their checkboxes are read-only.${(g=>g?`<br>Informals: ${g.done}/${g.target} done · ${g.left?`do ${g.per}/day until the meeting`:'target hit'}${g.toEmail?` · emails to send: ${g.toEmail}`:''}`:'')(informalGoal(who))}</div>`:''}
+    : sec(who===me?'Just for you':'Just for '+esc(fn),L.filter(t=>(t.who||[]).includes(who)),'Nothing assigned just to '+(who===me?'you':esc(fn))+'.')+sec('Whole class',all,'No class tasks yet.')
+  tasksEl.innerHTML=(pcp?`<label class="whose">Whose tasks: <select id="tbd" aria-label="Whose tasks">${(SEED.roster||[]).map(r=>`<option value="${esc(r.name)}"${r.name===who?' selected':''}>${r.name===me?'Me':'#'+r.n+' '+esc(first(r.name))}</option>`).join('')}</select></label>
+    <div class="field" style="margin-top:12px"><input id="tq" placeholder="${other?'Add a task for '+esc(fn)+'…':'Add a task for the whole class…'}" autocomplete="off" enterkeyhint="done" value="${esc(tDraft)}">
+    ${other?`<div class="chips" style="margin-top:6px"><button class="chip" id="tall" aria-pressed="${tAll}">Add to all</button></div>`:''}${who&&who!==me?`<div class="status">Viewing ${esc(fn)}'s board. Their checkboxes are read-only.${(g=>g?`<br>Informals: ${g.done}/${g.target} done · ${g.left?`do ${g.per}/day until the meeting`:'target hit'}${g.toEmail?` · emails to send: ${g.toEmail}`:''}`:'')(informalGoal(who))}</div>`:''}
     <div class="status" id="tprev">${tDraft.trim()?esc(previewText(target(parseTask(tDraft)))):hint}</div></div>`
     :`<div class="status" style="margin-top:14px">Your tasks. Only the PCP (${esc(PCP()||'not set')}) can add or remove tasks.</div>`)+board;
   bindTasks(tasksEl, renderTasks);
   if(!pcp) return;
-  tasksEl.querySelectorAll('[data-bd]').forEach(b=>b.onclick=()=>{ tBoard=b.dataset.bd; tAll=false; renderTasks(); });
+  const bd=tasksEl.querySelector('#tbd'); if(bd) bd.onchange=()=>{ tBoard=bd.value===me?'':bd.value; tAll=false; renderTasks(); };
   const ta=tasksEl.querySelector('#tall'); if(ta) ta.onclick=()=>{ tAll=!tAll; renderTasks(); };
   const q=tasksEl.querySelector('#tq'), pv=tasksEl.querySelector('#tprev');
   if(focused){ q.focus(); q.setSelectionRange(q.value.length,q.value.length); }
@@ -534,7 +548,10 @@ function renderTasks(){
 
 // ---------- milestones ----------
 // what "done" means for each milestone; change the date or tests here
-const MILESTONES={by:'2026-10-12', items:[
+const PACE_START='2026-09-16'; // induction day: informals and milestones are cumulative from here
+function pace(done, target, due){ const span=Math.max(1,daysTo(PACE_START,due)-1), gone=Math.min(span,Math.max(0,daysTo(PACE_START,today())-1)), exp=Math.round(target*gone/span); return {exp, ok:done>=exp, frac:gone/span}; }
+const paceTag = pc => pc.ok?'<span class="tag-ok">On pace</span>':'<span class="tag-bad">Behind</span>';
+const MILESTONES={by:'2026-10-11', items:[
   {id:'names', label:'All names', how:'Spell 100% on all 4 classes, plus every flashcard solid (Knew it twice in a row)', val:n=>[ROLLS.filter(r=>rollBest(n,r.cls)===100).length+Object.values(S.drill[n]||{}).filter(x=>x.last==='ok'&&(x.streak||0)>=2).length, ROLLS.length+S.cards.length]},
   {id:'quiz', label:'Quiz 100%', how:'100% on every filled-in official question (Q1–19)', val:n=>officialQuiz(n)}]};
 function officialQuiz(n){ const set=qSets().find(x=>x.id==='official'); if(!set) return [0,0]; const xs=qItems(set); return [xs.filter(x=>qBest(n,set.id,x.id)===100).length, xs.length]; }
@@ -544,45 +561,27 @@ function milestonesHtml(){
   return `<div class="editor" style="margin-top:12px"><h2>Milestones · ${esc(dueText(MILESTONES.by))}</h2>
     <div class="status">${M.map((m,i)=>`${esc(m.label)}: <b>${rows.filter(r=>met(r.v[i])).length} of ${rows.length}</b> done`).join(' · ')} · ${msLeft()}</div>
     <div style="overflow-x:auto"><table class="lb"><tr><th>Pledge</th>${M.map(m=>`<th class="n">${esc(m.label)}</th>`).join('')}<th class="n">Both</th></tr>
-    ${rows.map(r=>`<tr><td>${esc(first(r.n))}${r.n===me?' <b>(you)</b>':''}</td>${r.v.map(v=>`<td class="n${met(v)?' hit':late?' miss':''}">${v[0]}/${v[1]}</td>`).join('')}<td class="n${r.v.every(met)?' hit':''}">${r.v.every(met)?'✓':'—'}</td></tr>`).join('')}</table></div>
-    <div class="status">${M.map(m=>`${esc(m.label)} = ${esc(m.how)}`).join('. ')}.</div></div>`;
+    ${rows.map(r=>`<tr><td>${esc(first(r.n))}${r.n===me?' <b>(you)</b>':''}</td>${r.v.map(v=>{ const pc=pace(v[0],v[1],MILESTONES.by); return `<td class="n${met(v)?' hit':late?' miss':''}">${v[0]}/${v[1]}<small class="pc ${pc.ok?'ok':'bad'}">exp ${pc.exp}</small></td>`; }).join('')}<td class="n${r.v.every(met)?' hit':''}">${r.v.every(met)?'✓':'—'}</td></tr>`).join('')}</table></div>
+    <div class="status">${M.map(m=>`${esc(m.label)} = ${esc(m.how)}`).join('. ')}. "exp" = expected by today on a straight-line pace from induction; red means behind.</div></div>`;
 }
 function myMilestonesHtml(){
   if(!me) return ''; const M=MILESTONES.items;
   const I=informals(), c=I&&I[me];
-  return `<div class="editor"><h2>By ${esc(dueText(MILESTONES.by))} <small class="status">${msLeft()}</small></h2>${M.map(m=>{ const [a,b]=m.val(me); return `<div class="ms"><div><b>${esc(m.label)}</b><span>${a}/${b}</span></div><div class="bar"><i style="width:${b?Math.round(100*a/b):0}%"></i></div></div>`; }).join('')}
-    ${c?`<div class="ms"><div><b>Informals by ${esc(dueText(INFORMALS.by))}</b><span>${c.done}/${c.target}</span></div><div class="bar"><i style="width:${Math.min(100,Math.round(100*c.done/c.target))}%"></i></div><div class="status" style="margin-top:2px">${c.confirmed} confirmed · ${c.emailed} emailed</div></div>`:''}</div>`;
+  return `<div class="editor"><h2>By ${esc(dueText(MILESTONES.by))} <small class="status">${msLeft()}</small></h2>${M.map(m=>{ const [a,b]=m.val(me), pc=pace(a,b,MILESTONES.by); return `<div class="ms"><div><b>${esc(m.label)}</b><span>${a}/${b}</span></div><div class="bar"><i style="width:${b?Math.round(100*a/b):0}%"></i></div><div class="status" style="margin-top:2px">Expected by today: ${pc.exp} · ${paceTag(pc)}</div></div>`; }).join('')}
+    ${c?`<div class="ms"><div><b>Informals by ${esc(dueText(INFORMALS.by))}</b><span>${c.done}/${c.target}</span></div><div class="bar"><i style="width:${Math.min(100,Math.round(100*c.done/c.target))}%"></i></div><div class="status" style="margin-top:2px">${c.confirmed} confirmed · ${c.emailed} emailed · expected by today: ${pace(c.done,c.target,INFORMALS.by).exp} · ${paceTag(pace(c.done,c.target,INFORMALS.by))}</div></div>`:''}</div>`;
 }
 
 // ---------- accountability ----------
 const acctEl=document.getElementById('acct');
-let rankWeek=0;
-function weekPoints(n, P){
-  // points for one meeting-to-meeting period, from timestamps already stored
-  const inWk=ts=>{ if(!ts) return false; const t=Date.parse(ts); return t>P.start&&t<=P.end; };
-  const tasks=S.tasks.filter(t=>inWk((t.done||{})[n])).length;
-  const perfect=S.recitals.filter(r=>r.who===n&&String(r.passage).startsWith('roll:')&&r.pct===100&&inWk(r.at)).length;
-  const faces=Object.values(S.drill[n]||{}).filter(x=>x.last==='ok'&&(x.streak||0)>=2&&inWk(x.at)).length;
-  return {n, tasks, perfect, faces, pts:tasks+perfect+faces};
-}
-function rankHtml(){
-  const cur=periodAt(), P=rankWeek?prevPeriod(cur):cur, rows=PC().map(n=>weekPoints(n,P)).sort((a,b)=>b.pts-a.pts||a.n.localeCompare(b.n));
-  const why=r=>[r.tasks&&r.tasks+' task'+(r.tasks===1?'':'s'),r.perfect&&r.perfect+' perfect',r.faces&&r.faces+' face'+(r.faces===1?'':'s')].filter(Boolean).join(' · ');
-  return `<div class="editor" style="margin-top:12px"><h2>Weekly ranking</h2>
-    <div class="sub" style="margin-top:0"><button data-rw="0" aria-pressed="${!rankWeek}">This week</button><button data-rw="1" aria-pressed="${!!rankWeek}">Last week</button></div>
-    <div class="status">${esc(shortDay(P.startDay))} – ${esc(shortDay(P.endDay))} (meeting to meeting). 1 point per task checked off, 1 per 100% Spell, 1 per face that turns solid.</div>
-    ${rows[0].pts?'':'<div class="status">No points yet. The top 3 show once someone scores.</div>'}<div class="podium">${rows.slice(0,rows[0].pts?3:0).map((r,i)=>`<div class="pod"><span class="pl">${i+1}</span><div><b>${esc(r.n)}${r.n===me?' (you)':''}</b><small>${esc(why(r))||'No points yet'}</small></div><span class="pts">${r.pts}</span></div>`).join('')}</div>
-    <table class="lb">${rows.slice(rows[0].pts?3:0).map((r,i)=>`<tr><td class="n" style="width:2em;text-align:left">${i+(rows[0].pts?4:1)}</td><td>${esc(r.n)}${r.n===me?' <b>(you)</b>':''}</td><td class="n">${r.pts}</td></tr>`).join('')}</table></div>`;
-}
 // ---------- grades: tasks completed + informals, school scale ----------
 const LETTERS=[[97,'A+'],[93,'A'],[90,'A−'],[87,'B+'],[83,'B'],[80,'B−'],[77,'C+'],[73,'C'],[70,'C−'],[67,'D+'],[63,'D'],[60,'D−'],[20,'F'],[0,'F−']];
 const letter = pct => LETTERS.find(([min])=>pct>=min)[1];
 function gradeFor(n){
-  // tasks: share done of everything due before today (tasks finished early count too); informals: Done vs target, capped at 100%. Equal weight.
+  // tasks: share done of everything due before today (tasks finished early count too); informals: Done vs where you should be today on pace, capped at 100%. Equal weight.
   const t0=today(), xs=S.tasks.filter(t=>isFor(t,n)&&!t.repeat&&(isDone(t,n)||(t.due&&t.due<t0))), td=xs.filter(t=>isDone(t,n)).length;
   const I=informals(), c=I&&I[n], parts=[];
   const tp=xs.length?td/xs.length:null; if(tp!==null) parts.push(tp);
-  const ip=c?Math.min(1,c.done/c.target):null; if(ip!==null) parts.push(ip);
+  const ip=c?Math.min(1,c.done/Math.max(1,pace(c.done,c.target,INFORMALS.by).exp)):null; if(ip!==null) parts.push(ip);
   if(!parts.length) return null;
   const pct=Math.round(100*parts.reduce((a,b)=>a+b,0)/parts.length);
   const up=S.tasks.filter(t=>isFor(t,n)&&!t.repeat&&!isDone(t,n)&&!(t.due&&t.due<t0)).length;
@@ -591,9 +590,9 @@ function gradeFor(n){
 function gradesHtml(){
   const rows=PC().map(n=>[n,gradeFor(n)]).sort((a,b)=>(b[1]?b[1].pct:-1)-(a[1]?a[1].pct:-1)||a[0].localeCompare(b[0]));
   return `<div class="editor" style="margin-top:12px"><h2>Grades</h2>
-    <div class="status">Half tasks completed (of everything due before today, plus anything finished early), half informals (Done vs target, ${INFORMALS.target}; ${Object.entries(INFORMALS.targets).map(([n,v])=>esc(first(n))+' '+v).join(', ')}). ${informals()?esc(informalsUpdated())+'.':'Informals not synced yet, so tasks only.'}</div>
-    <table class="lb"><tr><th>Pledge</th><th class="n">Tasks</th><th class="n">Informals</th><th class="n">Score</th><th class="n">Grade</th></tr>
-    ${rows.map(([n,g])=>`<tr><td>${esc(first(n))}${n===me?' <b>(you)</b>':''}</td><td class="n">${g&&g.tasks[1]?g.tasks[0]+'/'+g.tasks[1]+' due':'none due'}${g&&g.up?`<small style="display:block;color:var(--ink2);font-size:12px">${g.up} upcoming</small>`:''}</td><td class="n">${g&&g.inf?g.inf[0]+'/'+g.inf[1]:'—'}</td><td class="n">${g?g.pct+'%':'—'}</td><td class="n grade${g&&g.pct>=90?' hit':''}">${g?g.letter:'—'}</td></tr>`).join('')}</table></div>`;
+    <div class="status">Half tasks completed (of everything due before today, plus anything finished early), half informals (Done vs expected-by-today on pace to ${INFORMALS.target}; ${Object.entries(INFORMALS.targets).map(([n,v])=>esc(first(n))+' '+v).join(', ')}). ${informals()?esc(informalsUpdated())+'.':'Informals not synced yet, so tasks only.'}</div>
+    <div style="overflow-x:auto"><table class="lb grades"><tr><th>Pledge</th><th class="n">Tasks</th><th class="n">Inf. / exp</th><th class="n">Score</th><th class="n">Grade</th></tr>
+    ${rows.map(([n,g])=>`<tr><td>${esc(first(n))}${n===me?' <b>(you)</b>':''}</td><td class="n">${g&&g.tasks[1]?g.tasks[0]+'/'+g.tasks[1]+' due':'none due'}${g&&g.up?`<small style="display:block;color:var(--ink2);font-size:12px">${g.up} upcoming</small>`:''}</td><td class="n">${g&&g.inf?g.inf[0]+'/'+pace(g.inf[0],g.inf[1],INFORMALS.by).exp:'—'}</td><td class="n">${g?g.pct+'%':'—'}</td><td class="n grade${g&&g.pct>=90?' hit':''}">${g?g.letter:'—'}</td></tr>`).join('')}</table></div></div>`;
 }
 
 function renderAcct(){
@@ -608,13 +607,12 @@ function renderAcct(){
   }).sort((a,b)=>b.hits-a.hits||b.solid-a.solid);
   const clsSigs=sigCards().filter(c=>sigOf(c).status==='signed').length+'/'+sigCards().length;
   const pctCell=b=>`<td class="n${b===100?' hit':''}">${b===null?'—':b+'%'}</td>`;
-  acctEl.innerHTML=gradesHtml()+milestonesHtml()+informalsHtml()+rankHtml()+`<div class="editor" style="margin-top:12px"><h2>Where everyone stands</h2>
+  acctEl.innerHTML=gradesHtml()+milestonesHtml()+informalsHtml()+`<div class="editor" style="margin-top:12px"><h2>Where everyone stands</h2>
     <div class="status">Green = target hit. Faces = cards marked Knew it twice in a row on Flashcards. Spell = best score (target 100%). Quiz = official questions at 100%. Tasks = done / assigned. Sigs signed = the class's signed sig tasks (done together).</div>
     <div style="overflow-x:auto"><table class="lb"><tr><th>Pledge</th><th class="n">Faces</th>${ROLLS.map(r=>`<th class="n">${esc(r.cls.replace('Beta ',''))}</th>`).join('')}<th class="n">Quiz Q1–19</th><th class="n">Tasks</th><th class="n">Sigs signed</th></tr>
     ${rows.map(r=>`<tr><td>${esc(r.n.split(' ')[0])}${r.n===me?' <b>(you)</b>':''}</td><td class="n${r.solid>=total?' hit':''}">${r.solid}/${total}</td>${r.spell.map(pctCell).join('')}${(()=>{ const [a,b]=officialQuiz(r.n); return `<td class="n${b&&a===b?' hit':''}">${b?a+'/'+b:'—'}</td>`; })()}<td class="n${r.assigned&&r.done===r.assigned?' hit':''}">${r.done}/${r.assigned}</td><td class="n">${clsSigs}</td></tr>`).join('')}</table></div>
     <div class="status">Spell columns: Upsilon, Phi, Chi, Psi rolls.</div></div>
-    ${me&&S.drill[me]?`<div class="editor" style="margin-top:12px"><h2>Your weak spots</h2><div class="grid" style="margin-top:6px">${S.cards.filter(c=>{const x=S.drill[me][c.photo]; return x&&x.last!=='ok';}).map(c=>{const x=S.drill[me][c.photo]; return `<div class="tile"><img src="${IMG(c.photo)}" alt=""><div>${esc(c.name)}<small>${x.last==='miss'?'name wrong':'facts shaky'} · ${x.miss} wrong · ${x.some||0} partial</small></div></div>`;}).join('')||'<div class="status">No misses on record. Either you are cracked or you have not drilled.</div>'}</div></div>`:''}`;
-  acctEl.querySelectorAll('[data-rw]').forEach(b=>b.onclick=()=>{ rankWeek=+b.dataset.rw; renderAcct(); });
+`;
 }
 
 // ---------- pledge guide ----------
@@ -626,7 +624,6 @@ function renderGuide(){
   const list=pages.filter(p=>!q||(p.title+' '+p.body).toLowerCase().includes(q));
   guideEl.innerHTML=`<div class="field" style="margin-top:12px"><label>Search the pledge guide</label><input id="gq" placeholder="e.g. hazing, big brother, 1907" value="${esc(gq)}" autocomplete="off"></div>
     <div class="count">${pages.length} pages · ${list.length} shown</div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${pages.map((p,i)=>`<a href="#g${i}" class="chip" style="text-decoration:none">${i+1}. ${esc(p.title)}</a>`).join('')}</div>
     ${list.map(p=>`<div class="passage" id="g${p.order}" style="user-select:text"><h3 style="margin:0 0 8px;font-size:18px">${hl(p.title)}</h3>${p.body.split(/\n\n+/).map(par=>`<p style="margin:0 0 10px;white-space:pre-line">${hl(par)}</p>`).join('')}</div>`).join('')||'<div class="reveal" style="margin-top:12px">No matches.</div>'}`;
   const inp=guideEl.querySelector('#gq'); inp.addEventListener('input',()=>{ const pos=inp.selectionStart; gq=inp.value; renderGuide(); const n=guideEl.querySelector('#gq'); n.focus(); n.setSelectionRange(pos,pos); });
 }
@@ -732,7 +729,7 @@ function renderToday(){
   todayEl.querySelector('#tdrill').onclick=()=>{ view='cards'; setMode('learn'); };
   const sb=todayEl.querySelector('#tstudy'); if(sb) sb.onclick=()=>setMode(lastStudy);
   const as=todayEl.querySelector('#allsigs'); if(as) as.onclick=()=>setMode('sigs');
-  bindTasks(todayEl, renderToday); bindSig(todayEl, renderToday);
+  bindTasks(todayEl, renderToday); bindSig(todayEl, renderToday); bindCommitments(todayEl, renderToday);
 }
 
 function weeklyHtml(){
@@ -752,7 +749,6 @@ function weeklyHtml(){
 
 // ---------- PCP dashboard: every pledge's open tasks, copyable ----------
 const dashEl=document.getElementById('dash');
-let dashLight=false; try{ dashLight=localStorage.getItem('bn-dash')==='light'; }catch(e){}
 function openTasksOf(n){
   // everything assigned to n (incl. whole-class) not yet checked by n, grouped by due day; undated last as Ongoing
   const t0=today(), xs=S.tasks.filter(t=>isFor(t,n)&&!isDone(t,n)).sort((a,b)=>((a.due||'9999')+(a.time||'99:99'))<((b.due||'9999')+(b.time||'99:99'))?-1:1), g=[];
@@ -774,22 +770,32 @@ function editsHtml(P){
 function renderDash(){
   const R=SEED.roster||[], I=informals(), P=periodAt();
   const PEND=S.pending||[];
-  dashEl.innerHTML=`${editsHtml(PEND)}<div class="ctrl" style="align-items:center"><button class="btn primary" id="dcopyall">Copy all</button><button class="btn" id="dlight" aria-pressed="${dashLight}" style="flex:0 0 auto">${dashLight?'Dark cards':'Light cards'}</button></div>
+  dashEl.innerHTML=`${editsHtml(PEND)}<div class="ctrl" style="align-items:center"><button class="btn primary" id="dcopyall">Copy all</button></div>
     <div class="status">${esc(P.label)} · open = assigned to them (incl. whole class) and not checked off yet</div>
-    <div class="dash ${dashLight?'light':''}">${R.map(r=>{ const c=I&&I[r.name], w=weekStats([r.name],P), g=openTasksOf(r.name), open=g.reduce((a,[,ts])=>a+ts.length,0);
+    <div class="dash">${R.map(r=>{ const c=I&&I[r.name], w=weekStats([r.name],P), g=openTasksOf(r.name), open=g.reduce((a,[,ts])=>a+ts.length,0);
       return `<div class="dcard" data-n="${r.n}"><div class="dtop"><b>#${r.n} ${esc(r.name)}</b><button class="small" data-dcopy="${r.n}">Copy tasks</button></div>
         <div class="dstat">${c?`Informals: <b>${c.done}/${c.target}</b> done · ${c.confirmed} confirmed · ${c.emailed} emailed`:'Informals: not synced yet'}<br>Yesterday's quiz: ${quizOn(r.name,addDays(today(),-1))?'<b>done</b>':'<b class="miss">missed</b>'} · today: ${quizOn(r.name,today())?'<b>done</b>':'not yet'}<br>This period: <b>${w.done}</b> done · <b>${w.tot-w.done}</b> open · ${open} open overall</div>
         ${g.length?g.map(([k,ts])=>`<div class="dday${k==='Overdue'?' late':''}">${esc(k)}</div><ul>${ts.map(t=>`<li>${esc(t.title)}${t.due?` <span>· ${esc(shortDay(t.due))}${t.time?' · '+timeText(t.time):''}</span>`:''}</li>`).join('')}</ul>`).join(''):'<div class="dstat">Nothing open.</div>'}</div>`; }).join('')}</div>`;
   dashEl.querySelectorAll('[data-pend]').forEach(b=>b.onclick=async()=>{ const pe=PEND.find(x=>x._k===b.dataset.pend); if(!pe) return; dashEl.querySelectorAll('[data-pend]').forEach(x=>x.disabled=true); await decidePending(pe, b.dataset.ok==='1'); renderDash(); });
   dashEl.querySelector('#dcopyall').onclick=()=>copyText(R.map(dashText).join('\n\n'));
-  dashEl.querySelector('#dlight').onclick=()=>{ dashLight=!dashLight; try{ localStorage.setItem('bn-dash',dashLight?'light':'dark'); }catch(e){} renderDash(); };
   dashEl.querySelectorAll('[data-dcopy]').forEach(b=>b.onclick=()=>copyText(dashText(R.find(r=>r.n===+b.dataset.dcopy))));
 }
 
 // ---------- quizzes (question bank in Firebase `quiz`, attempts in recitals as quiz:set:item) ----------
 const quizEl=document.getElementById('quizzes');
 const byOrder=(a,b)=>(a.order??0)-(b.order??0);
-const qSets = () => Object.entries((S.quiz&&S.quiz.sets)||{}).map(([id,x])=>Object.assign({id},x)).sort(byOrder);
+const qSets = () => Object.entries((S.quiz&&S.quiz.sets)||{}).map(([id,x])=>Object.assign({id},x)).sort(byOrder).concat(funSet()||[]);
+// Fun facts: built live from the "Fun facts:" bullets in brothers' card notes (not stored in `quiz`, so not editable here; edit the card instead)
+const strHash = t => { let h=0; for(const ch of t) h=(h*31+ch.charCodeAt(0))|0; return (h>>>0).toString(36); };
+function funSet(){
+  const items={}; let o=0;
+  (S.cards||[]).forEach(c=>{ const nt=String(c.notes||''), m=nt.match(/Fun facts?:\s*([\s\S]*)$/i); if(!m||!c.name) return;
+    const lines=/^\s*•/m.test(m[1])?m[1].split('\n').filter(l=>/^\s*•/.test(l)):[m[1]];
+    const fn=c.name.split(' ')[0].toLowerCase();
+    lines.forEach(l=>{ const f=l.replace(/^\s*•\s*/,'').replace(/\s*\((tracker|email|tracker, email|email, tracker)\)\s*$/i,'').trim(); if(f.length<8||f.toLowerCase().includes(fn)) return;
+      items[(c.photo||key(c.name))+'-'+strHash(f)]={q:`Which brother? "${f}"`, a:c.name, alt:c.full&&c.full!==c.name?[c.full]:[], order:o++}; }); });
+  return o?{id:'funfacts', title:'Fun facts', virtual:true, order:999, note:'From the brothers\' cards', items}:null;
+}
 const qFilled = set => Object.entries(set.items||{}).map(([id,x])=>Object.assign({id},x)).filter(x=>String(x.a||'').trim()).sort(byOrder);
 function qItems(set){
   // "both" sets (e.g. executive board) are asked both ways
@@ -848,7 +854,7 @@ function renderQuizzes(){
   }
   qz.phase='pick';
   quizEl.innerHTML=`<div class="sub" style="margin-top:14px">${[['order','In order'],['shuffle','Shuffle'],['missed','Missed only']].map(([k,l])=>`<button data-qm="${k}" aria-pressed="${qz.mode===k}">${l}</button>`).join('')}</div>
-    ${sets.map(x=>{ const sc=me&&qScore(me,x), n=qItems(x).length; return `<div class="qset" data-set="${esc(x.id)}"><div><b>${esc(x.title)}</b><small>${n?`${n} question${n===1?'':'s'}${sc?` · your score ${sc.pct}%${sc.mastered?' · Mastered':''}`:''}`:esc(x.note||'No questions yet.')}</small></div>${pcp?'<button class="small" data-qedit>Edit</button>':''}${n?'<button class="btn" data-qstart style="flex:0 0 auto">Start</button>':''}</div>`; }).join('')}
+    ${sets.map(x=>{ const sc=me&&qScore(me,x), n=qItems(x).length; return `<div class="qset" data-set="${esc(x.id)}"><div><b>${esc(x.title)}</b><small>${n?`${n} question${n===1?'':'s'}${sc?` · your score ${sc.pct}%${sc.mastered?' · Mastered':''}`:''}`:esc(x.note||'No questions yet.')}</small></div>${pcp&&!x.virtual?'<button class="small" data-qedit>Edit</button>':''}${n?'<button class="btn" data-qstart style="flex:0 0 auto">Start</button>':''}</div>`; }).join('')}
     <div class="qset"><div><b>Class rolls (Spell)</b><small>Type each class roll from memory</small></div><button class="btn" id="qspell" style="flex:0 0 auto">Start</button></div>
     <div class="status">Capitals and extra spaces don't matter; spelling, punctuation and word order do. Your score for a set is the average of your best on each question; Mastered = 100% on every one.</div>`;
   quizEl.querySelectorAll('[data-qm]').forEach(b=>b.onclick=()=>{ qz.mode=b.dataset.qm; renderQuizzes(); });
@@ -943,7 +949,7 @@ function renderRollBoard(){
 }
 
 // ---------- error safety net ----------
-function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06v'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
+function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06w'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
   b.innerHTML='<span style="flex:1;word-break:break-word">Something broke: '+esc(msg)+'</span><button onclick="location.reload()" style="border:0;background:#fff;color:#B23A3A;border-radius:8px;padding:6px 10px;font:600 13px \'Public Sans\',sans-serif;cursor:pointer">Reload</button><button onclick="document.getElementById(\'errbar\').remove()" style="border:0;background:transparent;color:#fff;font-size:18px;cursor:pointer">×</button>'; }
 window.addEventListener('error', e=>{ showErr((e.message||'error')+' @'+(e.lineno||'?')); try{ render(); }catch(x){} });
 window.addEventListener('unhandledrejection', e=>{ showErr('async: '+((e.reason&&e.reason.message)||e.reason||'error')); });
