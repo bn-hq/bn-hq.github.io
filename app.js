@@ -440,7 +440,7 @@ function taskHtml(t){
   return `<div class="task ${all?'done':''}" data-id="${esc(t.id)}"><div class="t">${mine?`<label class="ck"><input type="checkbox" data-tog ${meDone?'checked':''} ${ro?'disabled':''} aria-label="${ro?esc(first(v))+(meDone?' is done':' is not done'):'Mark done'}"></label>`:''}<button class="ttl" data-edit>${esc(t.title)}</button>${isPCP()?'<button class="x" data-del aria-label="Delete task">×</button>':''}</div>
     ${t.notes?`<div class="notes">${esc(t.notes)}</div>`:''}
     <div class="bar"><i style="width:${Math.round(100*n/as.length)}%"></i></div>
-    <div class="meta"><span class="due ${late?'late':''}">${late?'Overdue · ':t.due?'Due ':''}${esc(dueText(t.due))}${t.time?' · '+timeText(t.time):''}${mine&&t.due&&examOn(v,t.due).length?' · exam that day':''}${mine&&meDone&&!all?` · ${ro?esc(first(v))+' is':"you're"} done, open until everyone is`:''}</span><button class="small" data-show aria-label="Who's done">${n}/${as.length} done · ${esc(whoText(t.who))} ▾</button></div>
+    <div class="meta"><span class="due ${late?'late':''}">${late?'Overdue · ':t.due?'Due ':''}${esc(dueText(t.due))}${t.time?' · '+timeText(t.time):''}${mine?esc(countText(countGoal(t,v))):''}${mine&&t.due&&examOn(v,t.due).length?' · exam that day':''}${mine&&meDone&&!all?` · ${ro?esc(first(v))+' is':"you're"} done, open until everyone is`:''}</span><button class="small" data-show aria-label="Who's done">${n}/${as.length} done · ${esc(whoText(t.who))} ▾</button></div>
     ${isPCP()&&waiting.length&&!all?`<div class="notes">Waiting on: ${waiting.map(x=>esc(first(x))).join(', ')}</div>`:''}
     <div class="who" data-who hidden>${as.map(x=>`<span class="${isDone(t,x)?'':'no'}">${isDone(t,x)?'✓ ':''}${esc(first(x))}</span>`).join('')}</div></div>`;
 }
@@ -479,7 +479,7 @@ function renderTasks(){
     : sec('Mine',L.filter(t=>(t.who||[]).includes(me)),'Nothing assigned just to you.')+sec('Whole class',all,'No class tasks yet.')+sec('Assigned to others',L.filter(t=>(t.who||[]).length&&!(t.who||[]).includes(me)));
   tasksEl.innerHTML=(pcp?`<div class="status" style="margin-top:14px">View as</div><div class="chips" style="margin-top:4px"><button class="chip" data-bd="" aria-pressed="${!tBoard}">Everyone</button>${(SEED.roster||[]).map(r=>`<button class="chip" data-bd="${esc(r.name)}" aria-pressed="${tBoard===r.name}">#${r.n} ${esc(first(r.name))}</button>`).join('')}</div>
     <div class="field" style="margin-top:12px"><input id="tq" placeholder="${who?'Add a task for '+esc(fn)+'…':'Add a task for the whole class…'}" autocomplete="off" enterkeyhint="done" value="${esc(tDraft)}">
-    ${who?`<div class="chips" style="margin-top:6px"><button class="chip" id="tall" aria-pressed="${tAll}">Add to all</button></div>`:''}${who&&who!==me?`<div class="status">Viewing ${esc(fn)}'s board. Their checkboxes are read-only.</div>`:''}
+    ${who?`<div class="chips" style="margin-top:6px"><button class="chip" id="tall" aria-pressed="${tAll}">Add to all</button></div>`:''}${who&&who!==me?`<div class="status">Viewing ${esc(fn)}'s board. Their checkboxes are read-only.${(g=>g?`<br>Informals: ${g.done}/${g.target} done · ${g.left?`do ${g.per}/day until the meeting`:'target hit'}${g.toEmail?` · emails to send: ${g.toEmail}`:''}`:'')(informalGoal(who))}</div>`:''}
     <div class="status" id="tprev">${tDraft.trim()?esc(previewText(target(parseTask(tDraft)))):hint}</div></div>`
     :`<div class="status" style="margin-top:14px">Your tasks. Only the PCP (${esc(PCP()||'not set')}) can add or remove tasks.</div>`)+board;
   bindTasks(tasksEl, renderTasks);
@@ -652,11 +652,26 @@ function streakFor(n, base){
   return s;
 }
 const ring = pct => { const C=2*Math.PI*26, p=pct===null?0:pct; return `<svg class="ring" viewBox="0 0 64 64" width="64" height="64" aria-hidden="true"><circle cx="32" cy="32" r="26" fill="none" stroke="var(--line)" stroke-width="7"/>${p?`<circle cx="32" cy="32" r="26" fill="none" stroke="var(--ink)" stroke-width="7" stroke-linecap="round" stroke-dasharray="${(C*p/100).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 32 32)"/>`:''}<text x="32" y="37" text-anchor="middle" font-size="15" font-weight="700" fill="var(--ink)">${pct===null?'—':pct+'%'}</text></svg>`; };
-const checkRow = (t,n,late) => `<div class="task" data-id="${esc(t.id)}"><div class="t"><label class="ck"><input type="checkbox" data-tog ${isDone(t,n)?'checked':''} aria-label="Mark done"></label><span class="ttl">${esc(t.title)}</span><span class="due ${late?'late':''}">${esc(dueText(t.due))}${t.time?' · '+timeText(t.time):''}${t.due&&examOn(n,t.due).length?'<br>exam that day':''}</span></div></div>`;
+const BROTHERS=40;
+const daysTo = (from, to) => Math.max(1, Math.round((new Date(to+'T12:00:00')-new Date(from+'T12:00:00'))/864e5)+1);
+function informalGoal(n){
+  // what's left to the target, spread over the days left until the next meeting (today included)
+  const I=informals(), c=I&&I[n]; if(!c) return null; const P=periodAt(), left=Math.max(0,c.target-c.done), days=daysTo(today(),P.endDay);
+  return {per:Math.ceil(left/days), left, done:c.done, target:c.target, toEmail:Math.max(0,BROTHERS-c.done-c.confirmed-c.emailed), days};
+}
+function countGoal(t, n){
+  // tasks with a numeric target: split what's left evenly over the days until the due date
+  if(!t.target||!t.due||t.due<today()) return null; const p=+((t.prog||{})[n])||0, left=Math.max(0,+t.target-p);
+  return {per:Math.ceil(left/daysTo(today(),t.due)), left, prog:p, target:+t.target};
+}
+const countText = g => g ? (g.left?` · do ${g.per} today (${g.prog}/${g.target})`:` · ${g.prog}/${g.target} done`) : '';
+const checkRow = (t,n,late) => `<div class="task" data-id="${esc(t.id)}"><div class="t"><label class="ck"><input type="checkbox" data-tog ${isDone(t,n)?'checked':''} aria-label="Mark done"></label><span class="ttl">${esc(t.title)}</span><span class="due ${late?'late':''}">${esc(dueText(t.due))}${t.time?' · '+timeText(t.time):''}${esc(countText(countGoal(t,n)))}${t.due&&examOn(n,t.due).length?'<br>exam that day':''}</span></div></div>`;
 function renderToday(){
   if(!me){ todayEl.innerHTML=`<div class="editor"><h2>Hi there</h2><div class="status">Pick your name to see your plan.</div><div class="ctrl"><button class="btn primary" id="tpick">Pick your name</button></div></div>`+weeklyHtml(); todayEl.querySelector('#tpick').onclick=askName; return; }
   const t0=today(), t1=addDays(t0,1), plan=planFor(me,t0), P=periodAt(), wk=weekStats([me],P), cls=weekStats(PC(),P), st=streakFor(me,t0);
   const now=S.tasks.filter(t=>isFor(t,me)&&!isDone(t,me)&&t.due&&t.due<=t0).length;
+  const ig=informalGoal(me), dm=new Map(plan.days); if(ig) for(let d=t0; d<=P.endDay; d=addDays(d,1)) if(!dm.has(d)) dm.set(d,[]);
+  const days=[...dm.entries()].sort((a,b)=>a[0]<b[0]?-1:1);
   const solid=Object.values(S.drill[me]||{}).filter(x=>x.last==='ok'&&(x.streak||0)>=2).length;
   const spell=ROLLS.filter(r=>rollBest(me,r.cls)===100).length;
   const dayName = d => d===t0?'Today':d===t1?'Tomorrow':dayLabel(d);
@@ -671,7 +686,7 @@ function renderToday(){
       <div class="ctrl"><button class="btn primary" id="tdrill">Study flashcards</button></div></div>
     ${(()=>{ const nx=sigCards().filter(c=>['confirmed','done'].includes(sigOf(c).status)).sort((a,b)=>(+sigOf(a).difficulty||99)-(+sigOf(b).difficulty||99)||a.name.localeCompare(b.name)); return nx.length?`<h3 class="sec">Next sig tasks <small>${nx.length} in progress · easiest first</small></h3>${nx.slice(0,5).map(c=>sigRow(c,true)).join('')}${nx.length>5?`<div class="status"><button class="small" id="allsigs">See all ${nx.length}</button></div>`:''}`:''; })()}
     ${plan.catchup.length?`<h3 class="sec">Catch up <small>${plan.catchup.filter(t=>isDone(t,me)).length} of ${plan.catchup.length} done</small></h3>${plan.catchup.map(t=>checkRow(t,me,true)).join('')}`:''}
-    ${plan.days.length?plan.days.map(([d,ts])=>`<h3 class="sec">${esc(dayName(d))}</h3><div class="status" style="margin:0 0 2px">${goal(d,ts)}</div>${ts.map(t=>checkRow(t,me,false)).join('')}`).join('')
+    ${days.length?days.map(([d,ts])=>`<h3 class="sec">${esc(dayName(d))}</h3>${ig&&d<=P.endDay?`<div class="infg">${ig.left?`Informals: do ${ig.per} ${d===t0?'today':'this day'}`:'Informals: target hit'} (${ig.done}/${ig.target} done)${d===t0&&ig.toEmail?`<br>Emails to send: ${ig.toEmail}`:''}</div>`:''}${ts.length?`<div class="status" style="margin:0 0 2px">${goal(d,ts)}</div>`:''}${ts.map(t=>checkRow(t,me,false)).join('')}`).join('')
       :plan.catchup.length?'':`<div class="reveal" style="margin-top:14px;text-align:center"><div class="big">Nothing due 🎉</div><div class="ctrl"><button class="btn" id="tstudy">Go to Study</button></div></div>`}
     ${plan.ongoing.length?`<details class="ogd" ${ongoingOpen?'open':''}><summary><h3 class="sec">Ongoing <small>${plan.ongoing.length}</small></h3></summary>${plan.ongoing.map(t=>checkRow(t,me,false)).join('')}</details>`:''}`;
   const od=todayEl.querySelector('.ogd'); if(od) od.ontoggle=()=>{ ongoingOpen=od.open; };
@@ -684,7 +699,7 @@ function renderToday(){
 function weeklyHtml(){
   const I=informals(), t0=today(), pc=PC(), all=sigCards(), signed=all.filter(c=>sigOf(c).status==='signed').length;
   const scale=I?Math.max(...pc.map(n=>Math.max(I[n].done,I[n].target))):1;
-  const bars=I?pc.map(n=>{ const c=I[n]; return `<div class="hb"><span class="hl">${esc(first(n))}</span><div class="ht"><i style="width:${(100*c.done/scale).toFixed(1)}%"></i><b style="left:${(100*c.target/scale).toFixed(1)}%" title="Target ${c.target}"></b></div><span class="hv${c.done>=c.target?' ok':''}">${c.done}/${c.target}</span></div>`; }).join('')
+  const bars=I?pc.map(n=>{ const c=I[n]; return `<div class="hb"><span class="hl">${esc(first(n))}</span><div class="ht"><i style="width:${(100*c.done/scale).toFixed(1)}%"></i><b style="left:${(100*c.target/scale).toFixed(1)}%" title="Target ${c.target}"></b></div><span class="hv${c.done>=c.target?' ok':''}">${c.done}/${c.target}${(g=>g&&g.left?`<small> · ${g.per}/day</small>`:'')(informalGoal(n))}</span></div>`; }).join('')
     :'<div class="status">Informal counts sync from the tracker every night at 10 PM. Not synced yet.</div>';
   const atInf=I?pc.filter(n=>I[n].done>=I[n].target).length:0, ms=MILESTONES.items.map(m=>[m, pc.filter(n=>{ const [a,b]=m.val(n); return b>0&&a>=b; }).length]);
   const goals=[[`${INFORMALS.target} informals each (${Object.entries(INFORMALS.targets).map(([n,v])=>esc(first(n))+' '+v).join(', ')}) by ${mdy(INFORMALS.by)}`, I?`${atInf} of ${pc.length} there`:'not synced yet'],
@@ -843,7 +858,7 @@ function renderRollBoard(){
 }
 
 // ---------- error safety net ----------
-function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06m'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
+function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06n'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
   b.innerHTML='<span style="flex:1;word-break:break-word">Something broke: '+esc(msg)+'</span><button onclick="location.reload()" style="border:0;background:#fff;color:#B23A3A;border-radius:8px;padding:6px 10px;font:600 13px \'Public Sans\',sans-serif;cursor:pointer">Reload</button><button onclick="document.getElementById(\'errbar\').remove()" style="border:0;background:transparent;color:#fff;font-size:18px;cursor:pointer">×</button>'; }
 window.addEventListener('error', e=>{ showErr((e.message||'error')+' @'+(e.lineno||'?')); try{ render(); }catch(x){} });
 window.addEventListener('unhandledrejection', e=>{ showErr('async: '+((e.reason&&e.reason.message)||e.reason||'error')); });
