@@ -99,7 +99,8 @@ const when = () => new Date().toISOString();
 const fmt = iso => { const d=new Date(iso); return d.toLocaleDateString(undefined,{month:'short',day:'numeric'})+' '+d.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}); };
 const PC = () => (SEED.roster||[]).map(r=>r.name);
 const PNUM = n => { const r=(SEED.roster||[]).find(x=>x.name===n); return r?r.n:''; };
-const today = () => { const d=new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); };
+const isoDay = ts => { const d=new Date(ts); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); };
+const today = () => isoDay(Date.now());
 const addDays = (iso,k) => { const d=new Date(iso+'T12:00:00'); d.setDate(d.getDate()+k); return d.toISOString().slice(0,10); };
 const dayLabel = iso => { const t=today(); if(iso===t) return 'Today'; if(iso===addDays(t,1)) return 'Tomorrow'; return new Date(iso+'T12:00:00').toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'}); };
 const isFor = (t,n) => !t.who || !t.who.length || t.who.includes(n);
@@ -508,22 +509,54 @@ function renderLog(){
 
 // ---------- today ----------
 const todayEl=document.getElementById('today');
+const weekStart = iso => addDays(iso, -((dow(iso)+6)%7));
+const nextMeeting = iso => addDays(iso, (7-dow(iso))%7);
+const daysBetween = (a,b) => Math.round((new Date(b+'T12:00:00')-new Date(a+'T12:00:00'))/864e5);
+const doneDay = (t,n) => { const x=(t.done||{})[n]; return x?isoDay(x):null; };
+function planFor(n, base){
+  // day-by-day plan computed from tasks: dated on their date, overdue under catch up, undated spread to the next meeting (max 3/day)
+  base=base||today(); const days={}, catchup=[], undated=[], put=(d,t)=>(days[d]=days[d]||[]).push(t);
+  for(const t of S.tasks.filter(t=>isFor(t,n))){ const dd=doneDay(t,n);
+    if(t.due){ if(t.due>=base) put(t.due,t); else if(!dd||dd===base) catchup.push(t); }
+    else if(dd){ if(dd>=base) put(dd,t); } else undated.push(t); }
+  const D=daysBetween(base,nextMeeting(base))+1, N=undated.length;
+  undated.sort((a,b)=>(a.at||'')<(b.at||'')?-1:1).forEach((t,i)=>put(addDays(base, N<=3*D?Math.floor(i*D/N):Math.floor(i/3)), t));
+  return {catchup, days:Object.keys(days).sort().map(d=>[d,days[d]])};
+}
+function weekStats(names, base){
+  // this week (Mon-Sun): tasks still open and due by Sunday (or undated), plus anything finished this week
+  base=base||today(); const ws=weekStart(base), we=addDays(ws,6); let tot=0, done=0;
+  for(const n of names) for(const t of S.tasks){ if(!isFor(t,n)) continue; const dd=doneDay(t,n); if(dd&&dd<ws) continue; if(!dd&&t.due&&t.due>we) continue; tot++; if(dd) done++; }
+  return {tot, done, pct: tot?Math.round(100*done/tot):null};
+}
+function streakFor(n, base){
+  // consecutive days (back from today) where every task due that day was done by that day; days with nothing due are skipped
+  base=base||today(); let s=0;
+  for(let i=0;i<90;i++){ const d=addDays(base,-i), planned=S.tasks.filter(t=>isFor(t,n)&&(t.due===d||(!t.due&&doneDay(t,n)===d))); if(!planned.length) continue;
+    if(planned.every(t=>{ const dd=doneDay(t,n); return dd&&dd<=d; })) s++; else if(i) break; }
+  return s;
+}
+const ring = pct => { const C=2*Math.PI*26, p=pct===null?0:pct; return `<svg class="ring" viewBox="0 0 64 64" width="64" height="64" aria-hidden="true"><circle cx="32" cy="32" r="26" fill="none" stroke="var(--line)" stroke-width="7"/>${p?`<circle cx="32" cy="32" r="26" fill="none" stroke="var(--ink)" stroke-width="7" stroke-linecap="round" stroke-dasharray="${(C*p/100).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 32 32)"/>`:''}<text x="32" y="37" text-anchor="middle" font-size="15" font-weight="700" fill="var(--ink)">${pct===null?'—':pct+'%'}</text></svg>`; };
+const checkRow = (t,n,late) => `<div class="task" data-id="${esc(t.id)}"><div class="t"><label class="ck"><input type="checkbox" data-tog ${isDone(t,n)?'checked':''} aria-label="Mark done"></label><span class="ttl">${esc(t.title)}</span><span class="due ${late?'late':''}">${esc(dueText(t.due))}</span></div></div>`;
 function renderToday(){
-  if(!me){ todayEl.innerHTML=`<div class="editor"><h2>Hi there</h2><div class="status">Pick your name to see your tasks.</div><div class="ctrl"><button class="btn primary" id="tpick">Pick your name</button></div></div>`; todayEl.querySelector('#tpick').onclick=askName; return; }
-  const t0=today(), t1=addDays(t0,1), open=S.tasks.filter(t=>isFor(t,me)&&!isDone(t,me)).sort((a,b)=>(a.due||'9999')<(b.due||'9999')?-1:1);
-  const now=open.filter(t=>t.due&&t.due<=t0).length, groups=[];
-  for(const t of open){ const g=!t.due?'No date':t.due<t0?'Overdue':t.due===t0?'Today':t.due===t1?'Tomorrow':dayLabel(t.due); const last=groups[groups.length-1]; if(last&&last[0]===g) last[1].push(t); else groups.push([g,[t]]); }
+  if(!me){ todayEl.innerHTML=`<div class="editor"><h2>Hi there</h2><div class="status">Pick your name to see your plan.</div><div class="ctrl"><button class="btn primary" id="tpick">Pick your name</button></div></div>`; todayEl.querySelector('#tpick').onclick=askName; return; }
+  const t0=today(), t1=addDays(t0,1), plan=planFor(me,t0), wk=weekStats([me],t0), cls=weekStats(PC(),t0), st=streakFor(me,t0);
+  const now=S.tasks.filter(t=>isFor(t,me)&&!isDone(t,me)&&t.due&&t.due<=t0).length;
   const solid=Object.values(S.drill[me]||{}).filter(x=>x.last==='ok'&&(x.streak||0)>=2).length;
   const spell=ROLLS.filter(r=>rollBest(me,r.cls)===100).length;
   const rec=S.passages.filter(p=>S.recitals.some(r=>r.who===me&&r.passage===p.id&&r.pct===100)).length;
-  todayEl.innerHTML=`<h2 class="hi">Hi ${esc(first(me))}</h2><div class="status">${now?`<b>${now}</b> task${now===1?'':'s'} due today or overdue.`:'Nothing due today.'}</div>
+  const dayName = d => d===t0?'Today':d===t1?'Tomorrow':dayLabel(d);
+  const goal = (d,ts) => { const k=ts.filter(t=>isDone(t,me)).length; return `${d===t0?"Today's goal":'Goal'}: ${k} of ${ts.length} done`; };
+  todayEl.innerHTML=`<h2 class="hi">Hi ${esc(first(me))}</h2><div class="status">${now?`${now} task${now===1?'':'s'} due today or overdue.`:'Nothing due today.'}</div>
+    <div class="meter">${ring(wk.pct)}<div><b>This week</b><div class="status" style="margin:0">${wk.done} of ${wk.tot} done · resets Monday</div><div class="status" style="margin:2px 0 0">${st}-day streak</div></div></div>
+    <div class="clsbar"><span>Whole class: ${cls.pct===null?'—':cls.pct+'%'} this week</span><div class="bar"><i style="width:${cls.pct||0}%"></i></div></div>
     <div class="editor"><h2>Your progress</h2><div class="status">Faces solid <b>${solid}/${S.cards.length}</b> · Rolls spelled 100% <b>${spell}/${ROLLS.length}</b> · Recitals 100% <b>${rec}/${S.passages.length}</b></div>
       <div class="ctrl"><button class="btn primary" id="tdrill">Start drill</button></div></div>
-    ${groups.length?groups.map(([g,ts])=>`<h3 class="sec ${g==='Overdue'?'late':''}">${esc(g)} <small>${ts.length}</small></h3>${ts.map(t=>`<div class="task" data-id="${esc(t.id)}"><div class="t"><label class="ck"><input type="checkbox" data-tog aria-label="Mark done"></label><span class="ttl">${esc(t.title)}</span><span class="due ${g==='Overdue'?'late':''}">${esc(dueText(t.due))}</span></div></div>`).join('')}`).join('')
-      :`<div class="reveal" style="margin-top:14px;text-align:center"><div class="big">Nothing due 🎉</div><div class="ctrl"><button class="btn" id="tstudy">Go to Study</button></div></div>`}
-`;
+    ${plan.catchup.length?`<h3 class="sec">Catch up <small>${plan.catchup.filter(t=>isDone(t,me)).length} of ${plan.catchup.length} done</small></h3>${plan.catchup.map(t=>checkRow(t,me,true)).join('')}`:''}
+    ${plan.days.length?plan.days.map(([d,ts])=>`<h3 class="sec">${esc(dayName(d))}</h3><div class="status" style="margin:0 0 2px">${goal(d,ts)}</div>${ts.map(t=>checkRow(t,me,false)).join('')}`).join('')
+      :plan.catchup.length?'':`<div class="reveal" style="margin-top:14px;text-align:center"><div class="big">Nothing due 🎉</div><div class="ctrl"><button class="btn" id="tstudy">Go to Study</button></div></div>`}`;
   todayEl.querySelector('#tdrill').onclick=()=>{ filter='all'; renderChips(); setMode('quiz'); };
-  const st=todayEl.querySelector('#tstudy'); if(st) st.onclick=()=>setMode(lastStudy);
+  const sb=todayEl.querySelector('#tstudy'); if(sb) sb.onclick=()=>setMode(lastStudy);
   bindTasks(todayEl, renderToday);
 }
 

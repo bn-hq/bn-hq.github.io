@@ -167,5 +167,9 @@ header small{color:var(--ink2);font-size:12px;text-transform:uppercase;letter-sp
 .toast button{margin-left:8px;border:0;background:var(--gold);color:#1B1526;border-radius:999px;padding:6px 12px;font:700 13px "Public Sans",sans-serif;cursor:pointer;min-height:44px}
 #tq{font-size:16px;padding:12px;min-height:48px}
 .hi{margin:18px 0 0;font-size:26px}
-.sec.late{color:var(--bad)}
 #today .task .ttl{display:flex;align-items:center;cursor:default}
+.meter{display:flex;align-items:center;gap:14px;margin-top:14px}
+.meter b{font-family:"Bricolage Grotesque",sans-serif;font-size:17px}
+.clsbar{margin-top:10px;font-size:12px;color:var(--ink2)}
+.clsbar .bar{height:4px;background:var(--line);border-radius:2px;margin-top:4px;overflow:hidden}
+.clsbar .bar i{display:block;height:100%;background:var(--ink2)}
