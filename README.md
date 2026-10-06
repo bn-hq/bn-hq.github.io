@@ -23,6 +23,10 @@ Only the PCP (the roster entry whose role is "Pledge Class President") can add o
 
 Plans, weekly %, streaks and rankings are computed from these timestamps; nothing extra is stored.
 
+A task for several people (or the whole class) stays open until every assignee has checked it on their own board. The PCP can view anyone's board (read-only) and sees who each task is waiting on.
+
+Two Google Sheets are read client-side (see `SHEETS` in app.js): the Informals Tracker (Signups tab, columns E–O = pledges 1–11, rows 5–44 = brothers; Emailed / Confirmed / Done) for informal counts against the target (25, Ali 30), and the Signature Tasks Tracker (columns found by the Brother / Status / Task headers), which overrides sig status when readable. Each sheet must be shared "anyone with the link can view", or its `src` swapped for a File → Share → Publish to web → CSV link. If a sheet can't be read, the site says so and keeps using its own data.
+
 To change the site: edit a file on `main`, wait a minute, hard refresh. Bump the `Build` line at the bottom of `index.html` so we know who's on what.
 
 Firebase rules expire Oct 17, 2026. Set them to `{"rules":{".read":true,".write":true}}` in the console before then.

@@ -276,14 +276,61 @@ function renderGrid(){
 }
 gridEl.addEventListener('click', e=>{ const t=e.target.closest('.tile'); if(!t) return; view='cards'; resetOrder(); idx=order.findIndex(c=>c.photo===t.dataset.p); flipped=true; render(); window.scrollTo({top:0}); });
 
+// ---------- Google Sheets (read-only, client-side) ----------
+// Each sheet must be shared "anyone with the link can view", or swap src for its File > Share > Publish to web > CSV link.
+const SHEETS={
+  informals:{src:'https://docs.google.com/spreadsheets/d/1h-uOc2AbkqIXKYO97PXCK_YDFJP0Cbsbpe66cgKpUAs/gviz/tq?tqx=out:csv&sheet=Signups&range=E5:O44&headers=0', name:'Informals Tracker'},
+  sigs:{src:'https://docs.google.com/spreadsheets/d/1cMJ35jVmLAj84479Zo0r64K3AMh0KpQaeyrbZUI1bNk/gviz/tq?tqx=out:csv', name:'Signature Tasks Tracker'}};
+const INFORMALS={target:25, targets:{'Ali-Anass Mazouzi':30}, by:'2026-10-11'};
+const SH={};
+function parseCSV(t){ const rows=[]; let row=[], f='', q=false; for(let i=0;i<t.length;i++){ const ch=t[i]; if(q){ if(ch==='"'){ if(t[i+1]==='"'){ f+='"'; i++; } else q=false; } else f+=ch; } else if(ch==='"') q=true; else if(ch===','){ row.push(f); f=''; } else if(ch==='\n'||ch==='\r'){ if(ch==='\r'&&t[i+1]==='\n') i++; row.push(f); rows.push(row); row=[]; f=''; } else f+=ch; } if(f!==''||row.length){ row.push(f); rows.push(row); } return rows; }
+async function loadSheet(k){
+  const x=SH[k]; if(x&&Date.now()-x.t<300000) return x;
+  try{ const r=await fetch(SHEETS[k].src,{cache:'no-store'}); if(!r.ok) throw new Error('HTTP '+r.status); const txt=await r.text(); if(/^\s*</.test(txt)) throw new Error('the sheet is not shared or published'); SH[k]={rows:parseCSV(txt),t:Date.now()}; }
+  catch(e){ SH[k]={err:(e&&e.message)||String(e),t:Date.now()}; }
+  if(k==='sigs') buildSigSheet(); return SH[k];
+}
+const loadSheets = () => Promise.all(Object.keys(SHEETS).map(loadSheet));
+const sheetNote = k => SH[k]&&SH[k].err ? `Couldn't read the ${SHEETS[k].name} (${esc(SH[k].err)}). In the sheet: Share → anyone with the link can view, or File → Share → Publish to web → CSV, then put that link in SHEETS.${k}.src in app.js.` : !SH[k] ? 'Loading the '+SHEETS[k].name+'…' : '';
+function informals(){
+  // columns E-O are pledges 1-11, rows 5-44 the 40 brothers; cells are Emailed / Confirmed / Done
+  const x=SH.informals; if(!x||!x.rows) return null; let rows=x.rows; if(rows.some(r=>r.length>=15)) rows=rows.slice(4,44).map(r=>r.slice(4,15));
+  const out={}; for(const r of SEED.roster||[]){ const c={done:0,confirmed:0,emailed:0}; for(const row of rows){ const v=String(row[r.n-1]||'').trim().toLowerCase(); if(v in c) c[v]++; } c.target=INFORMALS.targets[r.name]||INFORMALS.target; out[r.name]=c; }
+  return out;
+}
+function informalsHtml(){
+  const I=informals();
+  if(!I) return `<div class="editor" style="margin-top:12px"><h2>Informals</h2><div class="status">${sheetNote('informals')}</div></div>`;
+  const rows=PC().map(n=>[n,I[n]]), hit=rows.filter(([,c])=>c.done>=c.target).length;
+  return `<div class="editor" style="margin-top:12px"><h2>Informals · ${esc(dueText(INFORMALS.by))}</h2>
+    <div class="status">From the ${SHEETS.informals.name} (Signups). At target: <b>${hit} of ${rows.length}</b>. Target ${INFORMALS.target}${Object.entries(INFORMALS.targets).map(([n,v])=>`, ${esc(first(n))} ${v}`).join('')}.</div>
+    <div style="overflow-x:auto"><table class="lb"><tr><th>Pledge</th><th class="n">Done</th><th class="n">Confirmed</th><th class="n">Emailed</th></tr>
+    ${rows.map(([n,c])=>`<tr><td>${esc(first(n))}${n===me?' <b>(you)</b>':''}</td><td class="n${c.done>=c.target?' hit':''}">${c.done}/${c.target}</td><td class="n">${c.confirmed}</td><td class="n">${c.emailed}</td></tr>`).join('')}</table></div></div>`;
+}
+let SIGSHEET={};
+function sheetCard(name, cls){
+  const t=words(name).map(nw).filter(Boolean); if(!t.length) return null; const k=String(cls||'').trim().toLowerCase();
+  const hits=S.cards.filter(c=>c.cls!=='Beta Omega'&&!c.photo.startsWith('vppe-')&&(!k||c.cls.toLowerCase().startsWith(k))&&(()=>{ const a=words(c.name).map(nw), f=words(c.full||'').map(nw); return (a[0]===t[0]||f[0]===t[0])&&a.concat(f).includes(t[t.length-1]); })());
+  return hits.length===1?hits[0]:null;
+}
+const sheetStatus = v => { v=String(v||'').toLowerCase(); return /sign/.test(v)?'signed':/done|complete/.test(v)?'done':/confirm/.test(v)?'confirmed':/request|email|sent|ask/.test(v)?'requested':'none'; };
+function buildSigSheet(){
+  // the Signature Tasks Tracker is the source of truth for status (and task text) when it can be read; columns found by header
+  SIGSHEET={}; const x=SH.sigs; if(!x||!x.rows) return;
+  const hi=x.rows.findIndex(r=>r.some(c=>/^brother$/i.test(c.trim()))&&r.some(c=>/^status$/i.test(c.trim()))); if(hi<0){ x.err='no Brother / Status header row'; return; }
+  const h=x.rows[hi].map(c=>c.trim().toLowerCase()), ib=h.indexOf('brother'), is=h.indexOf('status'), it=h.indexOf('task'), ic=h.indexOf('class');
+  for(const r of x.rows.slice(hi+1)){ const c=sheetCard(r[ib]||'', ic>=0?r[ic]:''); if(!c) continue; const task=it>=0?String(r[it]||'').trim():''; SIGSHEET[c.photo]=Object.assign({status:sheetStatus(r[is])}, task?{task}:{}); }
+}
+const fromSheet = c => !!(c&&SIGSHEET[c.photo]);
+
 // ---------- sig tasks (stored on each brother's card as c.sig) ----------
 const SIG=['none','requested','confirmed','done','signed'];
 const SIGL={none:'Not asked',requested:'Requested',confirmed:'Confirmed',done:'Done, needs signature',signed:'Signed'};
 const SIG_TARGET={pct:75, by:'2026-10-11'};
-const sigOf = c => (c&&c.sig)||{status:'none'};
-const sigCards = () => S.cards.filter(c=>c.sig);
+const sigOf = c => { const b=(c&&c.sig)||{status:'none'}, o=c&&SIGSHEET[c.photo]; return o?Object.assign({},b,o):b; };
+const sigCards = () => S.cards.filter(c=>c.sig||SIGSHEET[c.photo]);
 const mdy = iso => +iso.slice(5,7)+'/'+ +iso.slice(8,10);
-function sigProgress(){ const all=sigCards(), k=all.filter(c=>sigOf(c).status==='signed').length, tgt=Math.ceil(all.length*SIG_TARGET.pct/100); return `Signed ${k} of ${all.length} · target ${SIG_TARGET.pct}% (${tgt}) by ${mdy(SIG_TARGET.by)}`; }
+function sigProgress(){ const all=sigCards(), k=all.filter(c=>sigOf(c).status==='signed').length, tgt=Math.ceil(all.length*SIG_TARGET.pct/100); return `Signed ${k} of ${all.length} · target ${SIG_TARGET.pct}% (${tgt}) by ${mdy(SIG_TARGET.by)}`+(Object.keys(SIGSHEET).length?' · statuses from the '+SHEETS.sigs.name:''); }
 function sigSet(photo, upd){
   const c=S.cards.find(x=>x.photo===photo), b=sigOf(c);
   const changes=Object.keys(upd).filter(k=>!k.endsWith('At')).map(k=>({field:'Sig task · '+k,from:String(k==='status'?SIGL[b[k]]:b[k]??''),to:String(k==='status'?SIGL[upd[k]]:upd[k]??'')}));
@@ -296,10 +343,10 @@ const sigDiff = d => d?`<span class="diff" title="Difficulty">${+d}/10</span>`:'
 function sigHtml(c){
   if(!c||c.cls==='Beta Omega') return ''; const g=sigOf(c), i=SIG.indexOf(g.status);
   return `<div class="sig" data-sig="${esc(c.photo)}"><div class="sigtop"><b>Sig task</b>${sigChip(g.status)}${sigDiff(g.difficulty)}</div>
-    <button class="sigtask" data-sigtask title="Edit the task">${g.task?esc(g.task):'<span class="empty">No task text yet</span>'} <span class="pen">✎</span></button>${g.notes?`<div class="status">${esc(g.notes)}</div>`:''}
+    <button class="sigtask" ${fromSheet(c)&&SIGSHEET[c.photo].task?'disabled':'data-sigtask'} title="Edit the task">${g.task?esc(g.task):'<span class="empty">No task text yet</span>'} <span class="pen">✎</span></button>${g.notes?`<div class="status">${esc(g.notes)}</div>`:''}
     <div class="sigedit"><label>Owner<select data-sigowner><option value="">No owner</option>${PC().map(n=>`<option value="${esc(n)}" ${g.owner===n?'selected':''}>${esc(n)}</option>`).join('')}</select></label>
       <label>Difficulty<select data-sigdiff><option value="">—</option>${[1,2,3,4,5,6,7,8,9,10].map(d=>`<option ${+g.difficulty===d?'selected':''}>${d}</option>`).join('')}</select></label></div>
-    <div class="ctrl">${i>0?`<button class="btn" data-sigback style="flex:0 0 auto">← Back</button>`:''}${i<SIG.length-1?`<button class="btn" data-signext>Next step → ${esc(SIGL[SIG[i+1]])}</button>`:''}</div></div>`;
+    ${fromSheet(c)?`<div class="status">Status comes from the ${SHEETS.sigs.name}; update it there.</div>`:`<div class="ctrl">${i>0?`<button class="btn" data-sigback style="flex:0 0 auto">← Back</button>`:''}${i<SIG.length-1?`<button class="btn" data-signext>Next step → ${esc(SIGL[SIG[i+1]])}</button>`:''}</div>`}</div>`;
 }
 function bindSig(root, rerender){
   const ph=el=>el.closest('[data-sig]').dataset.sig, run=async p=>{ if(await p) rerender(); };
@@ -310,7 +357,7 @@ function bindSig(root, rerender){
   root.querySelectorAll('[data-sigtask]').forEach(b=>b.onclick=()=>{ const g=sigOf(S.cards.find(x=>x.photo===ph(b))); const v=prompt('Sig task',g.task||''); if(v===null||v.trim()===(g.task||'')) return; run(sigSet(ph(b),{task:v.trim()})); });
   root.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>openInDir(ph(b)));
 }
-const sigRow = (c,long) => { const g=sigOf(c); return `<div class="sigr" data-sig="${esc(c.photo)}"><button class="nm" data-open>${esc(c.name)}<small>${esc(c.cls.split(' (')[0])} · ${g.owner?esc(first(g.owner)):'no owner'}</small></button>${sigDiff(g.difficulty)}${sigChip(g.status)}${g.status==='signed'?'':long?`<button class="small nxl" data-signext>Next step →</button>`:`<button class="nx" data-signext aria-label="Next step">→</button>`}</div>`; };
+const sigRow = (c,long) => { const g=sigOf(c); return `<div class="sigr" data-sig="${esc(c.photo)}"><button class="nm" data-open>${esc(c.name)}<small>${esc(c.cls.split(' (')[0])} · ${g.owner?esc(first(g.owner)):'no owner'}</small></button>${sigDiff(g.difficulty)}${sigChip(g.status)}${g.status==='signed'||fromSheet(c)?'':long?`<button class="small nxl" data-signext>Next step →</button>`:`<button class="nx" data-signext aria-label="Next step">→</button>`}</div>`; };
 const sigsEl=document.getElementById('sigs');
 let sigMine=false;
 function renderSigs(){
@@ -366,23 +413,26 @@ async function addTasks(ps){
   const ok=await commit({who:me,at:when(),card:'Tasks',changes:ps.map(p=>({field:'Added task',from:'',to:p.title+' ('+whoText(p.who)+', due '+p.due+')'}))}, st=>{ for(const p of ps) st.tasks.push(newTask(p)); });
   if(ok){ tDraft=''; render(); } return ok;
 }
-let tDraft='', tEdit=null, tWho=[], tBoard='', tAll=false;
+let tDraft='', tEdit=null, tWho=[], tBoard='', tAll=false, tView='';
 function undoToast(text, onUndo){
   document.querySelectorAll('.toast').forEach(x=>x.remove()); const d=document.createElement('div'); d.className='toast'; d.innerHTML=`${esc(text)} <button>Undo</button>`; document.body.appendChild(d);
   const t=setTimeout(()=>d.remove(),5000); d.querySelector('button').onclick=()=>{ clearTimeout(t); d.remove(); onUndo(); };
 }
 function taskHtml(t){
-  const as=t.who&&t.who.length?t.who:PC(), n=as.filter(x=>isDone(t,x)).length, mine=!!me&&isFor(t,me), meDone=isDone(t,me);
-  const late=t.due&&t.due<today()&&(mine?!meDone:n<as.length);
+  // a task is complete only when every assignee has checked it; v is whose board is being shown (others' boards are read-only)
+  const v=tView||me, as=t.who&&t.who.length?t.who:PC(), n=as.filter(x=>isDone(t,x)).length, mine=!!v&&isFor(t,v), meDone=isDone(t,v), all=n>=as.length, ro=v!==me;
+  const late=t.due&&t.due<today()&&(mine?!meDone:!all);
   if(tEdit===t.id) return `<div class="task" data-id="${esc(t.id)}"><div class="field"><label>Task</label><input id="et" value="${esc(t.title)}"></div>
     <div class="field"><label>Due</label><input id="ed" type="date" value="${esc(t.due||'')}"></div>
     <div class="field"><label>Who</label><div class="chips" style="margin-top:0"><button class="chip" data-ew="" aria-pressed="${!tWho.length}">Whole class</button>${(SEED.roster||[]).map(r=>`<button class="chip" data-ew="${esc(r.name)}" aria-pressed="${tWho.includes(r.name)}">#${r.n} ${esc(first(r.name))}</button>`).join('')}</div></div>
     <div class="field"><label>Notes</label><textarea id="en">${esc(t.notes||'')}</textarea></div>
     <div class="ctrl"><button class="btn" id="ecancel">Cancel</button><button class="btn primary" id="esave">Save</button></div></div>`;
-  return `<div class="task ${(mine?meDone:n>=as.length)?'done':''}" data-id="${esc(t.id)}"><div class="t">${mine?`<label class="ck"><input type="checkbox" data-tog ${meDone?'checked':''} aria-label="Mark done"></label>`:''}<button class="ttl" data-edit>${esc(t.title)}</button>${isPCP()?'<button class="x" data-del aria-label="Delete task">×</button>':''}</div>
+  const waiting=as.filter(x=>!isDone(t,x));
+  return `<div class="task ${all?'done':''}" data-id="${esc(t.id)}"><div class="t">${mine?`<label class="ck"><input type="checkbox" data-tog ${meDone?'checked':''} ${ro?'disabled':''} aria-label="${ro?esc(first(v))+(meDone?' is done':' is not done'):'Mark done'}"></label>`:''}<button class="ttl" data-edit>${esc(t.title)}</button>${isPCP()?'<button class="x" data-del aria-label="Delete task">×</button>':''}</div>
     ${t.notes?`<div class="notes">${esc(t.notes)}</div>`:''}
     <div class="bar"><i style="width:${Math.round(100*n/as.length)}%"></i></div>
-    <div class="meta"><span class="due ${late?'late':''}">${late?'Overdue · ':'Due '}${esc(dueText(t.due))}</span><button class="small" data-show aria-label="Who's done">${n}/${as.length} done · ${esc(whoText(t.who))} ▾</button></div>
+    <div class="meta"><span class="due ${late?'late':''}">${late?'Overdue · ':t.due?'Due ':''}${esc(dueText(t.due))}${mine&&meDone&&!all?` · ${ro?esc(first(v))+' is':"you're"} done, open until everyone is`:''}</span><button class="small" data-show aria-label="Who's done">${n}/${as.length} done · ${esc(whoText(t.who))} ▾</button></div>
+    ${isPCP()&&waiting.length&&!all?`<div class="notes">Waiting on: ${waiting.map(x=>esc(first(x))).join(', ')}</div>`:''}
     <div class="who" data-who hidden>${as.map(x=>`<span class="${isDone(t,x)?'':'no'}">${isDone(t,x)?'✓ ':''}${esc(first(x))}</span>`).join('')}</div></div>`;
 }
 function bindTasks(el, rerender){
@@ -408,7 +458,7 @@ function bindTasks(el, rerender){
 }
 function renderTasks(){
   // everyone sees their own board; the PCP can switch to anyone's board (or Everyone) and is the only one who can add
-  const pcp=isPCP(), who=pcp?tBoard:me, fn=who?first(who):'';
+  const pcp=isPCP(), who=pcp?tBoard:me, fn=who?first(who):''; tView=who||me;
   const byDue=(a,b)=>(a.due||'9999')<(b.due||'9999')?-1:(a.due||'9999')>(b.due||'9999')?1:0;
   const L=S.tasks.slice().sort(byDue), all=L.filter(t=>!(t.who||[]).length);
   const sec=(h,ts,empty)=>{ const dated=ts.filter(t=>t.due), og=ts.filter(t=>!t.due); return ts.length||empty?`<h3 class="sec">${h} <small>${ts.length}</small></h3>${dated.map(taskHtml).join('')}${og.length?`<div class="ongo">Ongoing <small>${og.length}</small></div>${og.map(taskHtml).join('')}`:''}${ts.length?'':`<div class="reveal">${empty}</div>`}`:''; };
@@ -418,9 +468,9 @@ function renderTasks(){
   const board = !me ? '<div class="reveal" style="margin-top:14px">Pick your name to see your tasks.</div>'
     : who ? sec(who===me?'Just for you':'Just for '+esc(fn),L.filter(t=>(t.who||[]).includes(who)),'Nothing assigned just to '+(who===me?'you':esc(fn))+'.')+sec('Whole class',all,'No class tasks yet.')
     : sec('Mine',L.filter(t=>(t.who||[]).includes(me)),'Nothing assigned just to you.')+sec('Whole class',all,'No class tasks yet.')+sec('Assigned to others',L.filter(t=>(t.who||[]).length&&!(t.who||[]).includes(me)));
-  tasksEl.innerHTML=(pcp?`<div class="chips"><button class="chip" data-bd="" aria-pressed="${!tBoard}">Everyone</button>${(SEED.roster||[]).map(r=>`<button class="chip" data-bd="${esc(r.name)}" aria-pressed="${tBoard===r.name}">#${r.n} ${esc(first(r.name))}</button>`).join('')}</div>
+  tasksEl.innerHTML=(pcp?`<div class="status" style="margin-top:14px">View as</div><div class="chips" style="margin-top:4px"><button class="chip" data-bd="" aria-pressed="${!tBoard}">Everyone</button>${(SEED.roster||[]).map(r=>`<button class="chip" data-bd="${esc(r.name)}" aria-pressed="${tBoard===r.name}">#${r.n} ${esc(first(r.name))}</button>`).join('')}</div>
     <div class="field" style="margin-top:12px"><input id="tq" placeholder="${who?'Add a task for '+esc(fn)+'…':'Add a task for the whole class…'}" autocomplete="off" enterkeyhint="done" value="${esc(tDraft)}">
-    ${who?`<div class="chips" style="margin-top:6px"><button class="chip" id="tall" aria-pressed="${tAll}">Add to all</button></div>`:''}
+    ${who?`<div class="chips" style="margin-top:6px"><button class="chip" id="tall" aria-pressed="${tAll}">Add to all</button></div>`:''}${who&&who!==me?`<div class="status">Viewing ${esc(fn)}'s board. Their checkboxes are read-only.</div>`:''}
     <div class="status" id="tprev">${tDraft.trim()?esc(previewText(target(parseTask(tDraft)))):hint}</div></div>`
     :`<div class="status" style="margin-top:14px">Your tasks. Only the PCP (${esc(PCP()||'not set')}) can add or remove tasks.</div>`)+board;
   bindTasks(tasksEl, renderTasks);
@@ -453,7 +503,9 @@ function milestonesHtml(){
 }
 function myMilestonesHtml(){
   if(!me) return ''; const M=MILESTONES.items;
-  return `<div class="editor"><h2>By ${esc(dueText(MILESTONES.by))} <small class="status">${msLeft()}</small></h2>${M.map(m=>{ const [a,b]=m.val(me); return `<div class="ms"><div><b>${esc(m.label)}</b><span>${a}/${b}</span></div><div class="bar"><i style="width:${b?Math.round(100*a/b):0}%"></i></div></div>`; }).join('')}</div>`;
+  const I=informals(), c=I&&I[me];
+  return `<div class="editor"><h2>By ${esc(dueText(MILESTONES.by))} <small class="status">${msLeft()}</small></h2>${M.map(m=>{ const [a,b]=m.val(me); return `<div class="ms"><div><b>${esc(m.label)}</b><span>${a}/${b}</span></div><div class="bar"><i style="width:${b?Math.round(100*a/b):0}%"></i></div></div>`; }).join('')}
+    ${c?`<div class="ms"><div><b>Informals by ${esc(dueText(INFORMALS.by))}</b><span>${c.done}/${c.target}</span></div><div class="bar"><i style="width:${Math.min(100,Math.round(100*c.done/c.target))}%"></i></div><div class="status" style="margin-top:2px">${c.confirmed} confirmed · ${c.emailed} emailed</div></div>`:''}</div>`;
 }
 
 // ---------- accountability ----------
@@ -463,7 +515,7 @@ function weekPoints(n, ws){
   // points for the week starting ws (Monday), from timestamps already stored
   const we=addDays(ws,6), inWk=ts=>{ if(!ts) return false; const d=isoDay(ts); return d>=ws&&d<=we; };
   const tasks=S.tasks.filter(t=>inWk((t.done||{})[n])).length;
-  const sigs=S.cards.filter(c=>c.sig&&c.sig.owner===n&&c.sig.status==='signed'&&inWk(c.sig.signedAt)).length;
+  const sigs=S.cards.filter(c=>{ const g=sigOf(c); return g.owner===n&&g.status==='signed'&&inWk(g.signedAt); }).length;
   const perfect=S.recitals.filter(r=>r.who===n&&String(r.passage).startsWith('roll:')&&r.pct===100&&inWk(r.at)).length;
   const faces=Object.values(S.drill[n]||{}).filter(x=>x.last==='ok'&&(x.streak||0)>=2&&inWk(x.at)).length;
   return {n, tasks, sigs, perfect, faces, pts:tasks+3*sigs+perfect+faces};
@@ -485,13 +537,14 @@ function renderAcct(){
     const spell=ROLLS.map(r=>rollBest(n,r.cls));
     const mine=S.tasks.filter(t=>isFor(t,n)), done=mine.filter(t=>isDone(t,n)).length;
     const hits=(solid>=total?1:0)+spell.filter(b=>b===100).length+(mine.length&&done===mine.length?1:0);
-    return {n,solid,spell,done,assigned:mine.length,hits};
+    const sigs=sigCards().filter(c=>{ const g=sigOf(c); return g.owner===n&&g.status==='signed'; }).length;
+    return {n,solid,spell,done,assigned:mine.length,hits,sigs};
   }).sort((a,b)=>b.hits-a.hits||b.solid-a.solid);
   const pctCell=b=>`<td class="n${b===100?' hit':''}">${b===null?'—':b+'%'}</td>`;
-  acctEl.innerHTML=milestonesHtml()+rankHtml()+`<div class="editor" style="margin-top:12px"><h2>Where everyone stands</h2>
-    <div class="status">Green = target hit. Faces = brothers rated 5 twice in a row. Spell = best score (target 100%). Tasks = done / assigned.</div>
-    <div style="overflow-x:auto"><table class="lb"><tr><th>Pledge</th><th class="n">Faces</th>${ROLLS.map(r=>`<th class="n">${esc(r.cls.replace('Beta ',''))}</th>`).join('')}<th class="n">Tasks</th></tr>
-    ${rows.map(r=>`<tr><td>${esc(r.n.split(' ')[0])}${r.n===me?' <b>(you)</b>':''}</td><td class="n${r.solid>=total?' hit':''}">${r.solid}/${total}</td>${r.spell.map(pctCell).join('')}<td class="n${r.assigned&&r.done===r.assigned?' hit':''}">${r.done}/${r.assigned}</td></tr>`).join('')}</table></div>
+  acctEl.innerHTML=milestonesHtml()+informalsHtml()+rankHtml()+`<div class="editor" style="margin-top:12px"><h2>Where everyone stands</h2>
+    <div class="status">Green = target hit. Faces = brothers rated 5 twice in a row. Spell = best score (target 100%). Tasks = done / assigned. Sigs signed = sig tasks you own that reached Signed.</div>
+    <div style="overflow-x:auto"><table class="lb"><tr><th>Pledge</th><th class="n">Faces</th>${ROLLS.map(r=>`<th class="n">${esc(r.cls.replace('Beta ',''))}</th>`).join('')}<th class="n">Tasks</th><th class="n">Sigs signed</th></tr>
+    ${rows.map(r=>`<tr><td>${esc(r.n.split(' ')[0])}${r.n===me?' <b>(you)</b>':''}</td><td class="n${r.solid>=total?' hit':''}">${r.solid}/${total}</td>${r.spell.map(pctCell).join('')}<td class="n${r.assigned&&r.done===r.assigned?' hit':''}">${r.done}/${r.assigned}</td><td class="n">${r.sigs}</td></tr>`).join('')}</table></div>
     <div class="status">Spell columns: Psi, Chi, Phi, Upsilon rolls.</div></div>
     ${me&&S.drill[me]?`<div class="editor" style="margin-top:12px"><h2>Your weak spots</h2><div class="grid" style="margin-top:6px">${S.cards.filter(c=>{const x=S.drill[me][c.photo]; return x&&x.last!=='ok';}).map(c=>{const x=S.drill[me][c.photo]; return `<div class="tile"><img src="${IMG(c.photo)}" alt=""><div>${esc(c.name)}<small>${x.last==='miss'?'name wrong':'facts shaky'} · ${x.miss} wrong · ${x.some||0} partial</small></div></div>`;}).join('')||'<div class="status">No misses on record. Either you are cracked or you have not drilled.</div>'}</div></div>`:''}`;
   acctEl.querySelectorAll('[data-rw]').forEach(b=>b.onclick=()=>{ rankWeek=+b.dataset.rw; renderAcct(); });
@@ -632,7 +685,7 @@ function renderRollBoard(){
 }
 
 // ---------- error safety net ----------
-function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06f'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
+function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06g'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
   b.innerHTML='<span style="flex:1;word-break:break-word">Something broke: '+esc(msg)+'</span><button onclick="location.reload()" style="border:0;background:#fff;color:#B23A3A;border-radius:8px;padding:6px 10px;font:600 13px \'Public Sans\',sans-serif;cursor:pointer">Reload</button><button onclick="document.getElementById(\'errbar\').remove()" style="border:0;background:transparent;color:#fff;font-size:18px;cursor:pointer">×</button>'; }
 window.addEventListener('error', e=>{ showErr((e.message||'error')+' @'+(e.lineno||'?')); try{ render(); }catch(x){} });
 window.addEventListener('unhandledrejection', e=>{ showErr('async: '+((e.reason&&e.reason.message)||e.reason||'error')); });
@@ -660,5 +713,5 @@ function render(){
   else if(mode==='log') renderLog();
 }
 renderWho(); setStatus('Loading…');
-Promise.all([loadPhotos(),refresh()]).then(()=>{ renderChips(); resetOrder(); render(); if(!me) setTimeout(askName, 300); });
-setInterval(()=>{ const ae=document.activeElement, typing=ae&&(ae.tagName==='TEXTAREA'||(ae.tagName==='INPUT'&&ae.type!=='checkbox')); if(document.visibilityState==='visible' && !typing && !tEdit && !editing && !dirEdit && mode!=='learn' && mode!=='quiz') refresh().then(()=>{ order=order.map(c=>S.cards.find(x=>x.photo===c.photo)||c); drun=drun.map(c=>S.cards.find(x=>x.photo===c.photo)||c); if(['today','tasks','sigs','acct','log','facts','guide'].includes(mode)) render(); }); }, 30000);
+Promise.all([loadPhotos(),refresh()]).then(()=>{ renderChips(); resetOrder(); render(); if(!me) setTimeout(askName, 300); loadSheets().then(()=>{ if(['today','acct','sigs'].includes(mode)) render(); }); });
+setInterval(()=>{ const ae=document.activeElement, typing=ae&&(ae.tagName==='TEXTAREA'||(ae.tagName==='INPUT'&&ae.type!=='checkbox')); if(document.visibilityState==='visible' && !typing && !tEdit && !editing && !dirEdit && mode!=='learn' && mode!=='quiz') refresh().then(()=>{ order=order.map(c=>S.cards.find(x=>x.photo===c.photo)||c); drun=drun.map(c=>S.cards.find(x=>x.photo===c.photo)||c); if(['today','tasks','sigs','acct','log','facts','guide'].includes(mode)) render(); }); loadSheets(); }, 30000);
