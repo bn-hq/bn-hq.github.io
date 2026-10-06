@@ -9,11 +9,11 @@ function fromDb(d){
   d=d||{};
   const cards=objToArr(d.cards,'order'); cards.forEach(c=>{ c.extra=c.extra||{}; });
   const byAtDesc=(a,b)=>(a.at<b.at?1:-1);
-  return { version:d.version||0, cards, log:objToArr(d.log).sort(byAtDesc), facts:objToArr(d.facts,'order'), tasks:objToArr(d.tasks).sort((a,b)=>(a.due||'9999')<(b.due||'9999')?-1:1), recitals:objToArr(d.recitals).sort(byAtDesc), guide:objToArr(d.guide,'order'), passages: d.passages? objToArr(d.passages,'order') : SEED.passages, drill:d.drill||{}, informals:d.informals||null, exams:d.exams||{}, quiz:d.quiz||null, recaps:d.recaps||{} };
+  return { version:d.version||0, cards, log:objToArr(d.log).sort(byAtDesc), facts:objToArr(d.facts,'order'), tasks:objToArr(d.tasks).sort((a,b)=>(a.due||'9999')<(b.due||'9999')?-1:1), recitals:objToArr(d.recitals).sort(byAtDesc), guide:objToArr(d.guide,'order'), passages: d.passages? objToArr(d.passages,'order') : SEED.passages, drill:d.drill||{}, informals:d.informals||null, exams:d.exams||{}, quiz:d.quiz||null, recaps:d.recaps||{}, pending:objToArr(d.pending).sort((a,b)=>(a.at<b.at?-1:1)) };
 }
 async function dbGet(path){ const r=await fetch(DB+'/'+path+'.json',{cache:'no-store'}); if(!r.ok) throw new Error('read '+r.status); return r.json(); }
 async function dbWrite(method,path,body){ const r=await fetch(DB+'/'+path+'.json',{method,body:body===undefined?undefined:JSON.stringify(body)}); if(!r.ok) throw new Error('write '+r.status); return r.json(); }
-const KEYS=['version','cards','log','facts','tasks','recitals','passages','drill','guide','informals','exams','quiz','recaps'];
+const KEYS=['version','cards','log','facts','tasks','recitals','passages','drill','guide','informals','exams','quiz','recaps','pending'];
 async function loadPhotos(){
   if(Object.keys(URIS).length) return;
   try{ const c=localStorage.getItem('bn-photos'); if(c){ URIS=JSON.parse(c); if(Object.keys(URIS).length) { checkPhotoVersion(); return; } } }catch(e){}
@@ -42,35 +42,58 @@ let readOnly = false;
 
 function toast(t){ const d=document.createElement('div'); d.className='toast'; d.textContent=t; document.body.appendChild(d); setTimeout(()=>d.remove(),3000); }
 
+// Every write goes through commit(). It builds field-level ops; "info" ops (brother cards, facts, passages, the quiz bank,
+// task edits other than check-offs) from anyone but the PCP go to `pending` for review instead of applying.
+const fieldPatch = (b, a) => { const o={}; for(const k of new Set([...Object.keys(b||{}),...Object.keys(a||{})])){ if(k==='_k') continue; if(JSON.stringify((b||{})[k])!==JSON.stringify((a||{})[k])) o[k]=(a||{})[k]===undefined?null:a[k]; } return o; };
+function buildOps(next){
+  const ops=[], add=(m,path,body,info)=>ops.push({m,path,body,info});
+  // cards: PATCH the fields that changed (new card: PUT)
+  const before=Object.fromEntries(S.cards.map(c=>[c.photo,c]));
+  next.cards.forEach((c,i)=>{ const b=before[c.photo], cc=Object.assign({},c); delete cc._k;
+    if(!b){ cc.order=i; add('PUT','cards/'+key(c.photo),cc,true); return; }
+    const pt=fieldPatch(Object.assign({},b,{order:undefined}),Object.assign({},cc,{order:undefined})); if(Object.keys(pt).length) add('PATCH','cards/'+key(c.photo),pt,true); });
+  // tasks: check-offs are per-person writes (not reviewed); any other change is an info edit
+  const tb=Object.fromEntries(S.tasks.map(t=>[t.id,t])), tn=Object.fromEntries(next.tasks.map(t=>[t.id,t]));
+  for(const id of Object.keys(tn)){ const t=Object.assign({},tn[id]); delete t._k; const o=tb[id];
+    if(!o){ add('PUT','tasks/'+key(id),t,true); continue; }
+    const pt=fieldPatch(o,t), dn=pt.done!==undefined; delete pt.done;
+    if(dn){ const bd=o.done||{}, ad=t.done||{}; for(const n of new Set([...Object.keys(bd),...Object.keys(ad)])) if(bd[n]!==ad[n]) add(ad[n]===undefined?'DELETE':'PUT','tasks/'+key(id)+'/done/'+key(n),ad[n],false); }
+    if(Object.keys(pt).length) add('PATCH','tasks/'+key(id),pt,true); }
+  for(const id of Object.keys(tb)) if(!tn[id]) add('DELETE','tasks/'+key(id),undefined,true);
+  // facts / passages / quiz bank: small, rewrite whole
+  if(JSON.stringify(S.facts)!==JSON.stringify(next.facts)){ const o={}; next.facts.forEach((f,i)=>{ o[f._k||('f'+Date.now().toString(36)+i)]={q:f.q,a:f.a,order:i}; }); add('PUT','facts',o,true); }
+  if(JSON.stringify(S.passages)!==JSON.stringify(next.passages)){ const o={}; next.passages.forEach((p,i)=>{ o[p.id]={id:p.id,title:p.title,text:p.text,order:i}; }); add('PUT','passages',o,true); }
+  if(JSON.stringify(S.quiz||null)!==JSON.stringify(next.quiz||null)) add('PUT','quiz',next.quiz,true);
+  // personal: my drill ratings and new quiz/spell attempts
+  if(JSON.stringify(S.drill[me]||{})!==JSON.stringify(next.drill[me]||{})) add('PUT','drill/'+key(me),next.drill[me]||{},false);
+  for(const r of next.recitals) if(!r._k) add('POST','recitals',r,false);
+  return ops;
+}
+const reviewer = () => { const p=PCP(); return p?('#'+PNUM(p)+' '+first(p)):'the PCP'; };
 async function commit(entry, mutate){
   if(!me){ askName(); return false; }
   const next = JSON.parse(JSON.stringify(S));
   mutate(next);
   try{
-    const ops=[];
-    // cards: PUT changed cards
-    const before=Object.fromEntries(S.cards.map(c=>[c.photo,c]));
-    next.cards.forEach((c,i)=>{ const b=before[c.photo]; const cc=Object.assign({},c); delete cc._k; if(!b||JSON.stringify(Object.assign({},b,{_k:undefined,order:undefined}))!==JSON.stringify(Object.assign({},cc,{order:undefined}))){ cc.order=i; ops.push(dbWrite('PUT','cards/'+key(c.photo),cc)); } });
-    // tasks: PUT changed / DELETE removed
-    const tb=Object.fromEntries(S.tasks.map(t=>[t.id,t])); const tn=Object.fromEntries(next.tasks.map(t=>[t.id,t]));
-    for(const id of Object.keys(tn)){ const t=Object.assign({},tn[id]); delete t._k; if(JSON.stringify(tb[id]&&Object.assign({},tb[id],{_k:undefined}))!==JSON.stringify(t)) ops.push(dbWrite('PUT','tasks/'+key(id),t)); }
-    for(const id of Object.keys(tb)) if(!tn[id]) ops.push(dbWrite('DELETE','tasks/'+key(id)));
-    // facts: rewrite whole list (small)
-    if(JSON.stringify(S.facts)!==JSON.stringify(next.facts)){ const o={}; next.facts.forEach((f,i)=>{ o[f._k||('f'+Date.now().toString(36)+i)]={q:f.q,a:f.a,order:i}; }); ops.push(dbWrite('PUT','facts',o)); }
-    // passages
-    if(JSON.stringify(S.passages)!==JSON.stringify(next.passages)){ const o={}; next.passages.forEach((p,i)=>{ o[p.id]={id:p.id,title:p.title,text:p.text,order:i}; }); ops.push(dbWrite('PUT','passages',o)); }
-    // quiz bank (PCP edits): small, rewrite whole
-    if(JSON.stringify(S.quiz||null)!==JSON.stringify(next.quiz||null)) ops.push(dbWrite('PUT','quiz',next.quiz));
-    // drill: PATCH my subtree only
-    if(JSON.stringify(S.drill[me]||{})!==JSON.stringify(next.drill[me]||{})) ops.push(dbWrite('PUT','drill/'+key(me),next.drill[me]||{}));
-    // recitals: POST new ones (those without _k)
-    for(const r of next.recitals) if(!r._k) ops.push(dbWrite('POST','recitals',r));
-    if(entry) ops.push(dbWrite('POST','log',entry));
-    ops.push(dbWrite('PUT','version',(S.version||0)+1));
-    await Promise.all(ops);
+    const ops=buildOps(next), info=ops.filter(o=>o.info), review=info.length&&!isPCP(), run=review?ops.filter(o=>!o.info):ops;
+    if(!ops.length&&!entry) return true;
+    const w=run.map(o=>dbWrite(o.m,o.path,o.body));
+    if(review) w.push(dbWrite('POST','pending',{who:me,at:when(),entry:entry||{card:'Edit',changes:[]},ops:info.map(({m,path,body})=>body===undefined?{m,path}:{m,path,body})}));
+    else if(entry) w.push(dbWrite('POST','log',entry));  // reviewed edits are logged when approved
+    if(run.length) w.push(dbWrite('PUT','version',(S.version||0)+1));
+    await Promise.all(w);
     await refresh();
-    toast('Saved for everyone'); return true;
+    toast(review?`Sent to ${reviewer()} for review`:'Saved for everyone'); return true;
   }catch(e){ toast('Save failed: '+(e.message||e)+'. Check your connection and try again.'); await refresh(); return false; }
+}
+async function decidePending(p, approve){
+  // PCP only: apply (or drop) a pending info edit; both are logged
+  if(!isPCP()) return false;
+  try{
+    if(approve) await Promise.all((p.ops||[]).map(o=>dbWrite(o.m,o.path,o.body)));
+    const e=p.entry||{}; await Promise.all([dbWrite('POST','log',Object.assign({},e,{who:p.who,at:approve?when():p.at,card:(approve?'':'Rejected · ')+(e.card||'Edit'),changes:e.changes||[],reviewedBy:me})), dbWrite('DELETE','pending/'+key(p._k)), dbWrite('PUT','version',(S.version||0)+1)]);
+    await refresh(); toast(approve?'Approved and applied':'Rejected'); return true;
+  }catch(err){ toast('Failed: '+(err.message||err)); await refresh(); return false; }
 }
 
 // ---------- username ----------
@@ -123,11 +146,11 @@ const isDone = (t,n) => t.repeat==='daily' ? doneOn(t,n,today()) : !!(t.done||{}
 const chipsEl = document.getElementById('chips');
 function renderChips(){
   const cls=[...new Set(S.cards.map(c=>c.cls))].sort((a,b)=>clsRank(a)-clsRank(b)||a.localeCompare(b));
-  const items=[['all',`All ${S.cards.length}`],...cls.map(k=>[k,k]),['starred','★ Starred']];
-  chipsEl.innerHTML = items.map(([k,l])=>`<button class="chip" data-f="${esc(k)}" aria-pressed="${filter===k}">${esc(l)}</button>`).join('');
+  const items=[['all','All'],...cls.map(k=>[k,k.replace(/^Beta /,'').replace(/ \(.*\)$/,'')]),['starred','★']];
+  chipsEl.innerHTML = items.map(([k,l])=>`<button class="chip" data-f="${esc(k)}" aria-pressed="${filter===k}" title="${esc(k==='starred'?'Starred':k)}">${esc(l)}</button>`).join('');
 }
 chipsEl.addEventListener('click', e=>{ const b=e.target.closest('.chip'); if(!b) return; filter=b.dataset.f; renderChips(); saveDrill(); resetOrder(); render(); });
-const STUDY=['learn','roll','quizzes'], INFO=['guide','facts','log'], TASKS=['tasks','sigs','dash'];
+const STUDY=['learn','quizzes','roll'], INFO=['guide','facts','log'], TASKS=['tasks','sigs','dash'];
 let lastStudy='learn', lastInfo='guide', lastTasks='tasks'; try{ const v=JSON.parse(localStorage.getItem('bn-sub')||'{}'); if(STUDY.includes(v.s)) lastStudy=v.s; if(INFO.includes(v.i)) lastInfo=v.i; if(TASKS.includes(v.t)) lastTasks=v.t; }catch(e){}
 const tabOf = m => STUDY.includes(m)?'study':INFO.includes(m)?'info':TASKS.includes(m)?'tasks':m;
 function setMode(m){
@@ -141,9 +164,6 @@ document.querySelector('.tabs').addEventListener('click', e=>{
   setMode(t==='study'?lastStudy:t==='info'?lastInfo:t==='tasks'?lastTasks:t);
 });
 for(const id of ['studysub','infosub','tasksub']) document.getElementById(id).addEventListener('click', e=>{ const b=e.target.closest('[data-m]'); if(b) setMode(b.dataset.m); });
-document.getElementById('v-cards').onclick=()=>{ view='cards'; render(); };
-document.getElementById('v-grid').onclick=()=>{ view='grid'; render(); };
-document.getElementById('v-dir').onclick=()=>{ view='dir'; render(); setTimeout(()=>document.getElementById('dirq').focus(),50); };
 document.getElementById('dirq').addEventListener('input',renderDir);
 // ---------- learn ----------
 const cardEl=document.getElementById('card');
@@ -162,7 +182,8 @@ function renderCard(){
   const rt=document.getElementById('rate3'); rt.hidden=!flipped;
   if(flipped) rt.innerHTML=[[1,"Didn't know"],[3,'Partly'],[5,'Knew it']].map(([r,l],i)=>`<button class="btn r${r}" data-rate="${r}"><b>${i+1}</b> ${l}</button>`).join('');
   const p=pool(), solid=p.filter(x=>isSolid(recOf(x.photo))).length, rc=recOf(c.photo);
-  document.getElementById('fcprog').textContent = me ? `Solid ${solid}/${p.length} in this ${filter==='all'?'set':filter==='starred'?'starred set':'class'}${rc.r?` · last time: ${rc.r===5?'knew it':rc.r>=3?'partly':"didn't know"}`:' · new card'}` : 'Pick your name to save your progress.';
+  document.getElementById('fcprog').innerHTML = (me ? `Solid ${solid}/${p.length} in this ${filter==='all'?'set':filter==='starred'?'starred set':'class'}${rc.r?` · last time: ${rc.r===5?'knew it':rc.r>=3?'partly':"didn't know"}`:' · new card'}` : 'Pick your name to save your progress.')+` · <button class="linkbtn" id="fcorder">${fcSmart?'roll order':'smart order'}</button>`;
+  document.getElementById('fcorder').onclick=()=>setSmart(!fcSmart);
   const s=document.getElementById('star'); const on=!!stars[c.photo]; s.setAttribute('aria-pressed',on); s.textContent=on?'★ Starred':'☆ Star';
   document.getElementById('editor').hidden=true;
 }
@@ -174,8 +195,6 @@ document.getElementById('next').onpointerdown=e=>{ if(e.button) return; if(!orde
 document.getElementById('prev').onpointerdown=e=>{ if(e.button) return; if(!order.length) return; idx=(idx-1+order.length)%order.length; flipped=false; editing=false; renderCard(); };
 document.getElementById('rate3').addEventListener('click', e=>{ const b=e.target.closest('[data-rate]'); if(b) rateCard(+b.dataset.rate); });
 const setSmart = v => { saveDrill(); fcSmart=v; try{ localStorage.setItem('bn-fc', v?'smart':'order'); }catch(e){} resetOrder(); render(); };
-document.getElementById('o-smart').onclick=()=>setSmart(true);
-document.getElementById('o-order').onclick=()=>setSmart(false);
 document.getElementById('star').onclick=()=>{ const c=order[idx]; if(!c) return; if(stars[c.photo]) delete stars[c.photo]; else stars[c.photo]=1; saveStars(); renderCard(); };
 document.getElementById('edit').onclick=()=>{ if(!order[idx]) return; if(!me){ askName(); return; } openInDir(order[idx].photo, true); };
 document.addEventListener('keydown', e=>{ if(mode!=='learn'||view!=='cards'||editing||['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
@@ -193,8 +212,8 @@ function renderEditorInto(ed, c, onDone){
     ${FIELDS.map(([k,l])=>`<div class="field"><label>${esc(l)}</label><textarea data-k="${k}">${esc(c[k]||'')}</textarea></div>`).join('')}
     <div class="extras">${extra.map(([k,v])=>`<div class="field extra"><label>Custom field</label><div class="row"><input class="xk" placeholder="Field name" value="${esc(k)}"><input class="xv" placeholder="Value" value="${esc(v)}"></div></div>`).join('')}</div>
     <div class="ctrl"><button class="small addf">+ Add a field</button></div>
-    <div class="ctrl"><button class="btn cancel">Cancel</button><button class="btn primary save">Save for everyone</button></div>
-    <div class="status">Saved edits are visible to the whole PC and logged under your name.</div></div>`;
+    <div class="ctrl"><button class="btn cancel">Cancel</button><button class="btn primary save">${isPCP()?"Save for everyone":"Send for review"}</button></div>
+    <div class="status">${isPCP()?"Saved edits are visible to the whole PC and logged under your name.":`Your edit goes to ${esc(reviewer())} for review before it shows for everyone.`}</div></div>`;
   ed.querySelector('.addf').onclick=()=>{ const d=document.createElement('div'); d.className='field extra'; d.innerHTML='<label>Custom field</label><div class="row"><input class="xk" placeholder="Field name (e.g. Favorite bar)"><input class="xv" placeholder="Value"></div>'; ed.querySelector('.extras').appendChild(d); d.querySelector('.xk').focus(); };
   ed.querySelector('.cancel').onclick=()=>{ ed.hidden=true; onDone(false); };
   ed.querySelector('.save').onclick=async()=>{
@@ -244,8 +263,8 @@ async function saveDrill(){
 function renderDir(){
   const q=document.getElementById('dirq').value.trim().toLowerCase(); const out=document.getElementById('dirres');
   const hay=c=>[c.name,c.alias,c.cls,...FIELDS.map(([k])=>c[k]||''),...Object.values(c.extra||{})].filter(Boolean).join(' · ').toLowerCase();
-  const list=S.cards.filter(c=>!q||hay(c).includes(q)).sort((a,b)=>a.name.localeCompare(b.name));
-  out.innerHTML=(dirOpen?renderDirDetail():'')+`<div class="count">${list.length} match${list.length===1?'':'es'}</div>`+list.map(c=>{ const h=hay(c); let snip=''; if(q){ const i=h.indexOf(q); if(i>=0) snip=h.slice(Math.max(0,i-40),i+60).replace(/^\S*\s/,'').replace(/\s\S*$/,''); }
+  const list=q?S.cards.filter(c=>hay(c).includes(q)).sort((a,b)=>a.name.localeCompare(b.name)):[];
+  out.innerHTML=(dirOpen?renderDirDetail():'')+(q?`<div class="count">${list.length} match${list.length===1?'':'es'}</div>`:`<div class="count">Search all ${S.cards.length} brothers, or tap ✎ Edit on a card.</div>`)+list.map(c=>{ const h=hay(c); let snip=''; if(q){ const i=h.indexOf(q); if(i>=0) snip=h.slice(Math.max(0,i-40),i+60).replace(/^\S*\s/,'').replace(/\s\S*$/,''); }
     return `<button class="tile" data-p="${c.photo}" style="display:flex;width:100%;align-items:center;gap:12px;margin-top:8px;padding:8px"><img src="${IMG(c.photo)}" alt="" style="width:56px;height:56px;border-radius:10px;flex:none"><div style="padding:0"><div>${esc(c.name)}</div><small>${esc(c.cls)}${c.home?' · '+esc(c.home):''}</small>${snip?`<small style="color:var(--ink2)">…${esc(snip)}…</small>`:''}</div></button>`; }).join('');
   out.querySelectorAll('.tile').forEach(t=>t.onclick=()=>{ openInDir(t.dataset.p); });
   bindSig(out, renderDir);
@@ -256,7 +275,7 @@ function renderDir(){
 
 let dirOpen=null, dirEdit=false;
 function openInDir(photo, edit){
-  dirOpen=photo; dirEdit=!!edit; view='dir'; mode='learn'; lastStudy='learn';
+  dirOpen=photo; dirEdit=!!edit; view='cards'; mode='learn'; lastStudy='learn';
   render(); const c=S.cards.find(x=>x.photo===photo); document.getElementById('dirq').value=c?c.name:''; renderDir();
   const el=document.getElementById('dirdetail'); if(el) el.scrollIntoView({block:'start',behavior:'smooth'});
 }
@@ -269,11 +288,6 @@ function renderDirDetail(){
 }
 
 // ---------- grid ----------
-const gridEl=document.getElementById('grid');
-function renderGrid(){
-  gridEl.innerHTML=pool().map(c=>`<button class="tile" data-p="${c.photo}" data-star="${stars[c.photo]?1:0}"><img src="${IMG(c.photo)}" alt=""><div>${esc(c.name)}<small>${esc(c.cls)}</small></div></button>`).join('');
-}
-gridEl.addEventListener('click', e=>{ const t=e.target.closest('.tile'); if(!t) return; view='cards'; resetOrder(); idx=order.findIndex(c=>c.photo===t.dataset.p); flipped=true; render(); window.scrollTo({top:0}); });
 
 // ---------- Google Sheets (read-only, client-side) ----------
 // Each sheet must be shared "anyone with the link can view", or swap src for its File > Share > Publish to web > CSV link.
@@ -751,14 +765,22 @@ async function copyText(txt){
   try{ await navigator.clipboard.writeText(txt); }catch(e){ const ta=document.createElement('textarea'); ta.value=txt; ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.select(); try{ document.execCommand('copy'); }catch(x){} ta.remove(); }
   toast('Copied');
 }
+function editsHtml(P){
+  return `<div class="editor edits"><h2>Edits to review <small class="status">${P.length?P.length+' pending':'none pending'}</small></h2>${P.length?'':'<div class="status">Info edits from other pledges (brother cards, facts, task details) wait here until you approve them. Check-offs, quiz attempts and stars apply right away.</div>'}
+    ${P.map(p=>{ const e=p.entry||{}; return `<div class="pend"><div class="ptop"><b>${esc(first(p.who||'?'))}</b> · ${esc(e.card||'Edit')} <span class="status" style="margin:0">${esc(fmt(p.at))}</span></div>
+      ${(e.changes||[]).map(c=>`<div class="pchg"><b>${esc(c.field)}</b><span class="from">${esc(c.from||'(empty)')}</span> → <span class="to">${esc(c.to||'(cleared)')}</span></div>`).join('')||'<div class="status">'+(p.ops||[]).length+' change(s)</div>'}
+      <div class="ctrl"><button class="btn" data-pend="${esc(p._k)}" data-ok="0">Reject</button><button class="btn ok" data-pend="${esc(p._k)}" data-ok="1">Approve</button></div></div>`; }).join('')}</div>`;
+}
 function renderDash(){
   const R=SEED.roster||[], I=informals(), P=periodAt();
-  dashEl.innerHTML=`<div class="ctrl" style="align-items:center"><button class="btn primary" id="dcopyall">Copy all</button><button class="btn" id="dlight" aria-pressed="${dashLight}" style="flex:0 0 auto">${dashLight?'Dark cards':'Light cards'}</button></div>
+  const PEND=S.pending||[];
+  dashEl.innerHTML=`${editsHtml(PEND)}<div class="ctrl" style="align-items:center"><button class="btn primary" id="dcopyall">Copy all</button><button class="btn" id="dlight" aria-pressed="${dashLight}" style="flex:0 0 auto">${dashLight?'Dark cards':'Light cards'}</button></div>
     <div class="status">${esc(P.label)} · open = assigned to them (incl. whole class) and not checked off yet</div>
     <div class="dash ${dashLight?'light':''}">${R.map(r=>{ const c=I&&I[r.name], w=weekStats([r.name],P), g=openTasksOf(r.name), open=g.reduce((a,[,ts])=>a+ts.length,0);
       return `<div class="dcard" data-n="${r.n}"><div class="dtop"><b>#${r.n} ${esc(r.name)}</b><button class="small" data-dcopy="${r.n}">Copy tasks</button></div>
         <div class="dstat">${c?`Informals: <b>${c.done}/${c.target}</b> done · ${c.confirmed} confirmed · ${c.emailed} emailed`:'Informals: not synced yet'}<br>Yesterday's quiz: ${quizOn(r.name,addDays(today(),-1))?'<b>done</b>':'<b class="miss">missed</b>'} · today: ${quizOn(r.name,today())?'<b>done</b>':'not yet'}<br>This period: <b>${w.done}</b> done · <b>${w.tot-w.done}</b> open · ${open} open overall</div>
         ${g.length?g.map(([k,ts])=>`<div class="dday${k==='Overdue'?' late':''}">${esc(k)}</div><ul>${ts.map(t=>`<li>${esc(t.title)}${t.due?` <span>· ${esc(shortDay(t.due))}${t.time?' · '+timeText(t.time):''}</span>`:''}</li>`).join('')}</ul>`).join(''):'<div class="dstat">Nothing open.</div>'}</div>`; }).join('')}</div>`;
+  dashEl.querySelectorAll('[data-pend]').forEach(b=>b.onclick=async()=>{ const pe=PEND.find(x=>x._k===b.dataset.pend); if(!pe) return; dashEl.querySelectorAll('[data-pend]').forEach(x=>x.disabled=true); await decidePending(pe, b.dataset.ok==='1'); renderDash(); });
   dashEl.querySelector('#dcopyall').onclick=()=>copyText(R.map(dashText).join('\n\n'));
   dashEl.querySelector('#dlight').onclick=()=>{ dashLight=!dashLight; try{ localStorage.setItem('bn-dash',dashLight?'light':'dark'); }catch(e){} renderDash(); };
   dashEl.querySelectorAll('[data-dcopy]').forEach(b=>b.onclick=()=>copyText(dashText(R.find(r=>r.n===+b.dataset.dcopy))));
@@ -771,12 +793,20 @@ const qSets = () => Object.entries((S.quiz&&S.quiz.sets)||{}).map(([id,x])=>Obje
 const qFilled = set => Object.entries(set.items||{}).map(([id,x])=>Object.assign({id},x)).filter(x=>String(x.a||'').trim()).sort(byOrder);
 function qItems(set){
   // "both" sets (e.g. executive board) are asked both ways
-  const xs=qFilled(set); if(!set.both) return xs.map(x=>({id:x.id,q:x.q,a:x.a,alt:x.alt||[]}));
+  const xs=qFilled(set); if(!set.both) return xs.map(x=>({id:x.id,q:x.q,a:x.a,alt:x.alt||[],anyOrder:!!x.anyOrder}));
   return xs.flatMap(x=>[{id:x.id,q:`Who is the ${x.q}?`,a:x.a,alt:x.alt||[]},{id:x.id+'~r',q:`What position does ${x.a} hold?`,a:x.q,alt:[x.q.replace(/^Beta Nu /,'')]}]);
 }
 const qBest = (n,setId,itemId) => { const rs=S.recitals.filter(r=>r.who===n&&r.passage===`quiz:${setId}:${itemId}`); return rs.length?Math.max(...rs.map(r=>r.pct)):null; };
 function qScore(n,set){ const xs=qItems(set); if(!xs.length) return null; const b=xs.map(x=>qBest(n,set.id,x.id)||0); return {pct:Math.round(b.reduce((s,v)=>s+v,0)/xs.length), mastered:b.every(v=>v===100), perfect:b.filter(v=>v===100).length, total:xs.length}; }
-function qGrade(item, typed){ let best=null; for(const ans of [item.a].concat(item.alt||[])){ const g=lcsGrade(qtoks(ans),qtoks(typed),false); g.ans=ans; if(!best||g.pct>best.pct) best=g; } return best; }
+function anyOrderGrade(ans, typed){
+  // items listed in the answer (comma-separated) can come in any order; each must be spelled right. Case and spacing don't matter.
+  const parts=ans.split(/\s*[,;]\s*|\s+and\s+/i).filter(Boolean), T=qtoks(typed).map(w=>qkey(w,false)).filter(w=>/[\p{L}\p{N}]/u.test(w)&&w!=='and'), used=new Array(T.length).fill(false);
+  const hits=parts.map(pt=>{ const P=qtoks(pt).map(w=>qkey(w,false)).filter(w=>/[\p{L}\p{N}]/u.test(w)); for(let i=0;i+P.length<=T.length;i++){ if(P.every((w,j)=>!used[i+j]&&T[i+j]===w)){ P.forEach((_,j)=>used[i+j]=true); return true; } } return false; });
+  const toks=qtoks(ans), ok=[]; let pi=0; for(const t of toks){ if(/^[,;]$/.test(t)){ ok.push(true); pi++; } else ok.push(hits[pi]); }
+  const hit=hits.filter(Boolean).length, extras=used.filter(u=>!u).length;
+  return {ok, hit, total:parts.length, extras, pct:Math.max(0,Math.floor(100*hit/parts.length-0.5*extras)), ans};
+}
+function qGrade(item, typed){ if(item.anyOrder) return anyOrderGrade(item.a, typed); let best=null; for(const ans of [item.a].concat(item.alt||[])){ const g=lcsGrade(qtoks(ans),qtoks(typed),false); g.ans=ans; if(!best||g.pct>best.pct) best=g; } return best; }
 let qz={phase:'pick', mode:'order', set:null, run:[], i:0, res:{}, input:'', g:null, draft:null};
 function qStart(set, mode){
   let xs=qItems(set); if(mode==='missed') xs=xs.filter(x=>(qBest(me,set.id,x.id)||0)<100); if(mode==='shuffle') xs=shuffle(xs.slice());
@@ -819,11 +849,11 @@ function renderQuizzes(){
   qz.phase='pick';
   quizEl.innerHTML=`<div class="sub" style="margin-top:14px">${[['order','In order'],['shuffle','Shuffle'],['missed','Missed only']].map(([k,l])=>`<button data-qm="${k}" aria-pressed="${qz.mode===k}">${l}</button>`).join('')}</div>
     ${sets.map(x=>{ const sc=me&&qScore(me,x), n=qItems(x).length; return `<div class="qset" data-set="${esc(x.id)}"><div><b>${esc(x.title)}</b><small>${n?`${n} question${n===1?'':'s'}${sc?` · your score ${sc.pct}%${sc.mastered?' · Mastered':''}`:''}`:esc(x.note||'No questions yet.')}</small></div>${pcp?'<button class="small" data-qedit>Edit</button>':''}${n?'<button class="btn" data-qstart style="flex:0 0 auto">Start</button>':''}</div>`; }).join('')}
-    <div class="qset"><div><b>Classes</b><small>Spell each class roll from memory</small></div><button class="btn" id="qspell" style="flex:0 0 auto">Open Spell</button></div>
+    <div class="qset"><div><b>Class rolls (Spell)</b><small>Type each class roll from memory</small></div><button class="btn" id="qspell" style="flex:0 0 auto">Start</button></div>
     <div class="status">Capitals and extra spaces don't matter; spelling, punctuation and word order do. Your score for a set is the average of your best on each question; Mastered = 100% on every one.</div>`;
   quizEl.querySelectorAll('[data-qm]').forEach(b=>b.onclick=()=>{ qz.mode=b.dataset.qm; renderQuizzes(); });
   quizEl.querySelectorAll('[data-qstart]').forEach(b=>b.onclick=()=>qStart(sets.find(x=>x.id===b.closest('[data-set]').dataset.set), qz.mode));
-  quizEl.querySelectorAll('[data-qedit]').forEach(b=>b.onclick=()=>{ const x=sets.find(y=>y.id===b.closest('[data-set]').dataset.set); qz.set=x.id; qz.draft=Object.entries(x.items||{}).map(([id,v])=>Object.assign({id},v)).sort(byOrder).map(v=>({id:v.id,q:v.q||'',a:v.a||'',alt:(v.alt||[]).join(' | ')})); qz.phase='edit'; renderQuizzes(); });
+  quizEl.querySelectorAll('[data-qedit]').forEach(b=>b.onclick=()=>{ const x=sets.find(y=>y.id===b.closest('[data-set]').dataset.set); qz.set=x.id; qz.draft=Object.entries(x.items||{}).map(([id,v])=>Object.assign({id},v)).sort(byOrder).map(v=>({id:v.id,q:v.q||'',a:v.a||'',alt:(v.alt||[]).join(' | '),any:!!v.anyOrder})); qz.phase='edit'; renderQuizzes(); });
   quizEl.querySelector('#qspell').onclick=()=>setMode('roll');
 }
 function renderQuizEdit(set){
@@ -833,11 +863,12 @@ function renderQuizEdit(set){
   quizEl.innerHTML=`<div class="editor"><h2>Edit · ${esc(set.title)}</h2>${D.map((x,i)=>`<div class="qedit" data-i="${i}"><div class="ctrl" style="margin:0 0 4px;align-items:center"><b style="flex:1">${set.both?'':'Q'}${i+1}</b><button class="small" data-up ${i?'':'disabled'}>↑</button><button class="small" data-dn ${i<D.length-1?'':'disabled'}>↓</button><button class="small" data-rm>×</button></div>
       <div class="field"><label>${set.both?'Position':'Question'}</label><textarea data-k="q" rows="2">${esc(x.q)}</textarea></div>
       <div class="field"><label>${set.both?'Name':'Answer (leave empty to hide from quizzes)'}</label><textarea data-k="a" rows="2">${esc(x.a)}</textarea></div>
-      <div class="field"><label>Also accept (separate with |)</label><input data-k="alt" value="${esc(x.alt)}"></div></div>`).join('')}
+      <div class="field"><label>Also accept (separate with |)</label><input data-k="alt" value="${esc(x.alt)}"></div><label class="qany"><input type="checkbox" data-any ${x.any?"checked":""}> Any order (comma-separated items)</label></div>`).join('')}
     <div class="ctrl"><button class="small" id="qadd">+ Add question</button></div>
     <div class="ctrl"><button class="btn" id="qcancel">Cancel</button><button class="btn primary" id="qsave">Save for everyone</button></div></div>`;
   quizEl.querySelectorAll('.qedit').forEach(el=>{ const i=+el.dataset.i;
     el.querySelectorAll('[data-k]').forEach(f=>f.oninput=()=>{ D[i][f.dataset.k]=f.value; });
+    el.querySelector('[data-any]').onchange=e=>{ D[i].any=e.target.checked; };
     el.querySelector('[data-up]').onclick=()=>{ [D[i-1],D[i]]=[D[i],D[i-1]]; renderQuizEdit(set); };
     el.querySelector('[data-dn]').onclick=()=>{ [D[i+1],D[i]]=[D[i],D[i+1]]; renderQuizEdit(set); };
     el.querySelector('[data-rm]').onclick=()=>{ if(D[i].q.trim()&&!confirm('Remove this question?')) return; D.splice(i,1); renderQuizEdit(set); }; });
@@ -845,8 +876,8 @@ function renderQuizEdit(set){
   quizEl.querySelector('#qcancel').onclick=()=>{ qz.phase='pick'; renderQuizzes(); };
   quizEl.querySelector('#qsave').onclick=async()=>{
     const items={}, old=set.items||{}, ch=[];
-    D.filter(x=>x.q.trim()).forEach((x,i)=>{ const alt=x.alt.split('|').map(v=>v.trim()).filter(Boolean); items[x.id]=Object.assign({q:x.q.trim(),a:x.a.trim(),order:i+1},alt.length?{alt}:{});
-      const o=old[x.id]; if(!o) ch.push({field:'Added question',from:'',to:x.q.trim()}); else if(o.q!==items[x.id].q||(o.a||'')!==items[x.id].a||JSON.stringify(o.alt||[])!==JSON.stringify(alt)) ch.push({field:x.q.trim(),from:o.a||'',to:items[x.id].a}); });
+    D.filter(x=>x.q.trim()).forEach((x,i)=>{ const alt=x.alt.split('|').map(v=>v.trim()).filter(Boolean); items[x.id]=Object.assign({q:x.q.trim(),a:x.a.trim(),order:i+1},alt.length?{alt}:{},x.any?{anyOrder:true}:{});
+      const o=old[x.id]; if(!o) ch.push({field:'Added question',from:'',to:x.q.trim()}); else if(o.q!==items[x.id].q||(o.a||'')!==items[x.id].a||JSON.stringify(o.alt||[])!==JSON.stringify(alt)||!!o.anyOrder!==!!x.any) ch.push({field:x.q.trim(),from:o.a||'',to:items[x.id].a}); });
     for(const id of Object.keys(old)) if(!items[id]) ch.push({field:'Removed question',from:old[id].q,to:''});
     if(!ch.length&&JSON.stringify(Object.keys(old).sort((a,b)=>old[a].order-old[b].order))===JSON.stringify(Object.keys(items))){ qz.phase='pick'; return renderQuizzes(); }
     if(!ch.length) ch.push({field:'Reordered questions',from:'',to:D.length+' questions'});
@@ -880,7 +911,7 @@ const rollBest = (n,cls) => { const rs=S.recitals.filter(x=>x.who===n&&x.passage
 function renderRoll(){
   const r=ROLLS[rIdx]; if(!r){ rollEl.innerHTML='<div class="reveal">No rolls loaded.</div>'; return; }
   const d=rDraft[r.cls]=rDraft[r.cls]||{c:'',v:'',m:''};
-  rollEl.innerHTML=`<div class="chips">${ROLLS.map((x,i)=>{ const b=rollBest(me,x.cls); return `<button class="chip" data-ri="${i}" aria-pressed="${i===rIdx}">${esc(x.cls)}${b===null?'':' · '+b+'%'}</button>`; }).join('')}</div>
+  rollEl.innerHTML=`<div class="ctrl" style="margin-top:10px"><button class="small" id="rback">← Quizzes</button></div><div class="chips">${ROLLS.map((x,i)=>{ const b=rollBest(me,x.cls); return `<button class="chip" data-ri="${i}" aria-pressed="${i===rIdx}">${esc(x.cls)}${b===null?'':' · '+b+'%'}</button>`; }).join('')}</div>
     <div class="editor"><h2>Spell the ${esc(r.cls)} roll</h2>
       <div class="field"><label>Class name</label><input id="rc" autocomplete="off" autocapitalize="words" value="${esc(d.c)}"></div>
       <div class="field"><label>VPPE</label><input id="rv" autocomplete="off" autocapitalize="words" value="${esc(d.v)}"></div>
@@ -888,6 +919,7 @@ function renderRoll(){
       <div class="ctrl"><button class="btn primary" id="rcheck">Check it</button></div>
       <div class="status">Full official names, in order. Capitals and accents don't matter; spelling, punctuation and order do. Target: 100% on all four classes.</div></div>
     <div id="rres"></div><div id="rboard"></div>`;
+  rollEl.querySelector('#rback').onclick=()=>setMode('quizzes');
   rollEl.querySelectorAll('[data-ri]').forEach(b=>b.onclick=()=>{ rIdx=+b.dataset.ri; renderRoll(); });
   for(const [id,k] of [['rc','c'],['rv','v'],['rm','m']]) rollEl.querySelector('#'+id).oninput=e=>{ d[k]=e.target.value; };
   rollEl.querySelector('#rcheck').onclick=async()=>{
@@ -911,7 +943,7 @@ function renderRollBoard(){
 }
 
 // ---------- error safety net ----------
-function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06u'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
+function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06v'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
   b.innerHTML='<span style="flex:1;word-break:break-word">Something broke: '+esc(msg)+'</span><button onclick="location.reload()" style="border:0;background:#fff;color:#B23A3A;border-radius:8px;padding:6px 10px;font:600 13px \'Public Sans\',sans-serif;cursor:pointer">Reload</button><button onclick="document.getElementById(\'errbar\').remove()" style="border:0;background:transparent;color:#fff;font-size:18px;cursor:pointer">×</button>'; }
 window.addEventListener('error', e=>{ showErr((e.message||'error')+' @'+(e.lineno||'?')); try{ render(); }catch(x){} });
 window.addEventListener('unhandledrejection', e=>{ showErr('async: '+((e.reason&&e.reason.message)||e.reason||'error')); });
@@ -919,17 +951,16 @@ window.addEventListener('unhandledrejection', e=>{ showErr('async: '+((e.reason&
 // ---------- render ----------
 function render(){
   if(!['today','learn','roll','quizzes','tasks','sigs','dash','guide','facts','acct','log'].includes(mode)) mode='today';
-  document.getElementById('count').textContent=`${pool().length} in this set · ${Object.keys(stars).length} starred · data v${S.version}`;
   const showChips = mode==='learn';
-  chipsEl.hidden=!showChips; document.getElementById('count').hidden=!showChips;
+  chipsEl.hidden=!showChips;
   for(const id of ['today','learn','roll','quizzes','tasks','sigs','dash','guide','facts','acct','log']) document.getElementById(id).hidden = mode!==id;
   if(mode==='dash'&&!isPCP()){ mode='tasks'; lastTasks='tasks'; }
-  document.querySelector('#tasksub [data-m=dash]').hidden=!isPCP();
+  const db=document.querySelector('#tasksub [data-m=dash]'); db.hidden=!isPCP(); db.textContent='Dashboard'+(isPCP()&&(S.pending||[]).length?` (${S.pending.length})`:'');
   const tab=tabOf(mode);
   document.querySelectorAll('[role=tab]').forEach(t=>t.setAttribute('aria-selected', t.dataset.tab===tab));
   document.getElementById('studysub').hidden = tab!=='study'; document.getElementById('infosub').hidden = tab!=='info'; document.getElementById('tasksub').hidden = tab!=='tasks';
-  document.querySelectorAll('#studysub [data-m],#infosub [data-m],#tasksub [data-m]').forEach(b=>b.setAttribute('aria-pressed', b.dataset.m===mode));
-  if(mode==='learn'){ document.getElementById('o-smart').setAttribute('aria-pressed',fcSmart); document.getElementById('o-order').setAttribute('aria-pressed',!fcSmart); document.getElementById('v-cards').setAttribute('aria-pressed',view==='cards'); document.getElementById('v-grid').setAttribute('aria-pressed',view==='grid'); document.getElementById('v-dir').setAttribute('aria-pressed',view==='dir'); document.getElementById('cardwrap').hidden=view!=='cards'; gridEl.hidden=view!=='grid'; document.getElementById('dir').hidden=view!=='dir'; if(view==='cards') renderCard(); else if(view==='grid') renderGrid(); else renderDir(); }
+  document.querySelectorAll('#studysub [data-m],#infosub [data-m],#tasksub [data-m]').forEach(b=>b.setAttribute('aria-pressed', b.dataset.m===mode||(mode==='roll'&&b.dataset.m==='quizzes')));
+  if(mode==='learn'){ renderCard(); renderDir(); }
   else if(mode==='today') renderToday();
   else if(mode==='roll') renderRoll();
   else if(mode==='quizzes') renderQuizzes();
@@ -943,4 +974,4 @@ function render(){
 }
 renderWho(); setStatus('Loading…');
 Promise.all([loadPhotos(),refresh()]).then(()=>{ renderChips(); resetOrder(); render(); if(!me) setTimeout(askName, 300); loadSheets().then(()=>{ if(['today','acct','sigs'].includes(mode)) render(); }); });
-setInterval(()=>{ const ae=document.activeElement, typing=ae&&(ae.tagName==='TEXTAREA'||(ae.tagName==='INPUT'&&ae.type!=='checkbox')); if(document.visibilityState==='visible' && !typing && !tEdit && !editing && !dirEdit && mode!=='learn' && mode!=='quiz') refresh().then(()=>{ order=order.map(c=>S.cards.find(x=>x.photo===c.photo)||c); if(['today','tasks','sigs','acct','log','facts','guide'].includes(mode)) render(); }); loadSheets(); }, 30000);
+setInterval(()=>{ const ae=document.activeElement, typing=ae&&(ae.tagName==='TEXTAREA'||(ae.tagName==='INPUT'&&ae.type!=='checkbox')); if(document.visibilityState==='visible' && !typing && !tEdit && !editing && !dirEdit && mode!=='learn' && mode!=='quiz') refresh().then(()=>{ order=order.map(c=>S.cards.find(x=>x.photo===c.photo)||c); if(['today','tasks','sigs','dash','acct','log','facts','guide'].includes(mode)) render(); }); loadSheets(); }, 30000);

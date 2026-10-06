@@ -17,12 +17,12 @@ Data (cards, tasks, facts, guide, scores) is in a Firebase database, not in this
 - `cards/<photo>` – one per brother: `name`, `full` (official name), `cls`, facts fields, `extra`, and an optional `sig`: `{status: none|requested|confirmed|done|signed, task, difficulty (1-10), requestedAt, confirmedAt, doneAt, signedAt, notes}`. Only `signed` counts as complete. Sig tasks have no owner: the whole class does each one together.
 - `tasks/<id>` – `{id, title, due, notes, by, at, done: {name: isoTime}, who?: [names]}`. Missing or empty `who` means the whole class. The adder never creates a second task with the same normalized title and assignees. Missing `due` means ongoing (never overdue, not in weekly %). `repeat: 'daily'` (+ `time`) tasks show every day and reset daily: `done[name]` is the date done; `auto: 'quiz'` ones count as done on any day with a Quizzes or Spell attempt.
 - `recitals` – `{who, at, passage, pct}`. `passage` is `roll:<class>` for Spell (older entries are from the removed Recite page).
-- `quiz` – `{sets: {setId: {title, order, both?, note?, items: {id: {q, a, alt?: [..], order}}}}}`. The PCP edits it in the app; items with an empty answer are hidden from quizzes. `both` sets are asked both ways. Attempts are `recitals` with passage `quiz:<set>:<item>`.
+- `quiz` – `{sets: {setId: {title, order, both?, note?, items: {id: {q, a, alt?: [..], order}}}}}`. The PCP edits it in the app; items with an empty answer are hidden from quizzes. `both` sets are asked both ways. Items with `anyOrder: true` accept their comma-separated parts in any order. Attempts are `recitals` with passage `quiz:<set>:<item>`.
 
 Grading (Spell and Quizzes): not case-sensitive and extra spaces don't matter; spelling, punctuation, word order and grammar do. Spell also ignores accents and `*`. Curly and straight quotes count as the same.
 - `drill/<name>` – per-card Flashcards ratings (1 / 3 / 5, streak, at); solid = Knew it twice in a row. `log`, `facts`, `guide`, `passages`, `version` as before.
 
-Only the PCP (the roster entry whose role is "Pledge Class President") can add or delete tasks. That is a UI rule only: the database is open to anyone with the URL, so it is not real security.
+Only the PCP (the roster entry whose role is "Pledge Class President") can add or delete tasks. Info edits from anyone else (brother cards, facts, task details, sig tasks) go to `pending` and apply only when the PCP approves them on the Dashboard; check-offs, quiz/spell attempts and stars apply right away. That is a UI rule only: the database is open to anyone with the URL, so it is not real security.
 
 Daily goals are computed live too: informals left to the target ÷ days until the next meeting (shown on each day of Today's plan, on Weekly progress and on the PCP's view of a person's board, with "emails to send" = brothers not yet emailed), and for tasks with a numeric `target` (per-person progress in `prog`), what's left ÷ days until the due date.
 

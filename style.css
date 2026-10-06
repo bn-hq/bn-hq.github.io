@@ -260,3 +260,16 @@ header small{color:var(--ink2);font-size:12px;text-transform:uppercase;letter-sp
 .dcard li{margin:1px 0}
 .dcard li span{color:var(--ink2)}
 .dstat b.miss{color:var(--bad)}
+.chips{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding-bottom:2px}
+.chips::-webkit-scrollbar{display:none}
+.chips .chip{flex:none;padding:5px 14px}
+.linkbtn{border:0;background:none;padding:0;color:var(--purple);font:600 12px "Public Sans",sans-serif;text-decoration:underline;cursor:pointer}
+#dir{margin-top:22px}
+.edits{margin-top:12px}
+.pend{border-top:1px solid var(--line);padding-top:10px;margin-top:10px;font-size:13px}
+.pend .ptop{display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
+.pchg{margin-top:4px;word-break:break-word}
+.pchg b{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink2)}
+.pchg .from{color:var(--bad);text-decoration:line-through}
+.pchg .to{color:var(--good)}
+.qany{display:flex;gap:8px;align-items:center;min-height:44px;font-size:13px;color:var(--ink2)}
