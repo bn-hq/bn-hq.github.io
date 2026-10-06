@@ -114,20 +114,20 @@ function renderChips(){
   chipsEl.innerHTML = items.map(([k,l])=>`<button class="chip" data-f="${esc(k)}" aria-pressed="${filter===k}">${esc(l)}</button>`).join('');
 }
 chipsEl.addEventListener('click', e=>{ const b=e.target.closest('.chip'); if(!b) return; filter=b.dataset.f; renderChips(); resetOrder(); if(mode==='quiz'){ saveDrill(); startDrill(); } render(); });
-const STUDY=['learn','quiz','roll','recite'], INFO=['guide','facts','log'];
-let lastStudy='learn', lastInfo='guide'; try{ const v=JSON.parse(localStorage.getItem('bn-sub')||'{}'); if(STUDY.includes(v.s)) lastStudy=v.s; if(INFO.includes(v.i)) lastInfo=v.i; }catch(e){}
-const tabOf = m => STUDY.includes(m)?'study':INFO.includes(m)?'info':m;
+const STUDY=['learn','quiz','roll','recite'], INFO=['guide','facts','log'], TASKS=['tasks','sigs'];
+let lastStudy='learn', lastInfo='guide', lastTasks='tasks'; try{ const v=JSON.parse(localStorage.getItem('bn-sub')||'{}'); if(STUDY.includes(v.s)) lastStudy=v.s; if(INFO.includes(v.i)) lastInfo=v.i; if(TASKS.includes(v.t)) lastTasks=v.t; }catch(e){}
+const tabOf = m => STUDY.includes(m)?'study':INFO.includes(m)?'info':TASKS.includes(m)?'tasks':m;
 function setMode(m){
   if(mode==='quiz') saveDrill(); resetOrder(); stopRec(); mode=m;
-  if(STUDY.includes(m)) lastStudy=m; if(INFO.includes(m)) lastInfo=m; try{ localStorage.setItem('bn-sub',JSON.stringify({s:lastStudy,i:lastInfo})); }catch(e){}
+  if(STUDY.includes(m)) lastStudy=m; if(INFO.includes(m)) lastInfo=m; if(TASKS.includes(m)) lastTasks=m; try{ localStorage.setItem('bn-sub',JSON.stringify({s:lastStudy,i:lastInfo,t:lastTasks})); }catch(e){}
   if(mode==='quiz') startDrill(); render(); window.scrollTo({top:0});
   refresh().then(()=>{ order=order.map(c=>S.cards.find(x=>x.photo===c.photo)||c); if(mode!=='learn'&&mode!=='quiz') render(); });
 }
 document.querySelector('.tabs').addEventListener('click', e=>{
   const b=e.target.closest('[role=tab]'); if(!b) return; const t=b.dataset.tab;
-  setMode(t==='study'?lastStudy:t==='info'?lastInfo:t);
+  setMode(t==='study'?lastStudy:t==='info'?lastInfo:t==='tasks'?lastTasks:t);
 });
-for(const id of ['studysub','infosub']) document.getElementById(id).addEventListener('click', e=>{ const b=e.target.closest('[data-m]'); if(b) setMode(b.dataset.m); });
+for(const id of ['studysub','infosub','tasksub']) document.getElementById(id).addEventListener('click', e=>{ const b=e.target.closest('[data-m]'); if(b) setMode(b.dataset.m); });
 document.getElementById('v-cards').onclick=()=>{ view='cards'; render(); };
 document.getElementById('v-grid').onclick=()=>{ view='grid'; render(); };
 document.getElementById('v-dir').onclick=()=>{ view='dir'; render(); setTimeout(()=>document.getElementById('dirq').focus(),50); };
@@ -147,15 +147,16 @@ function renderCard(){
     const rows=FIELDS.map(([k,l])=>[l,c[k]]);
     for(const [k,v] of Object.entries(c.extra||{})) rows.push([k,v]);
     rows.push(['LinkedIn', c.li?`<a href="https://www.linkedin.com/in/${esc(c.li)}/" target="_blank" rel="noopener">linkedin.com/in/${esc(c.li)}</a>`:'', true]);
-    cardEl.innerHTML=`<div class="back"><img src="${IMG(c.photo)}" alt=""><div><h2>${esc(c.name)}</h2>${c.alias?`<div class="alias">${esc(c.alias)}</div>`:''}<span class="tag">${esc(c.cls)}</span></div><div class="facts">${rows.map(([k,v,raw])=>`<div><b>${esc(k)}</b><span>${v?(raw?v:esc(v)):'<span class="empty">not filled in yet</span>'}</span></div>`).join('')}</div></div>`;
+    cardEl.innerHTML=`<div class="back"><img src="${IMG(c.photo)}" alt=""><div><h2>${esc(c.name)}</h2>${c.alias?`<div class="alias">${esc(c.alias)}</div>`:''}<span class="tag">${esc(c.cls)}</span></div><div class="facts">${rows.map(([k,v,raw])=>`<div><b>${esc(k)}</b><span>${v?(raw?v:esc(v)):'<span class="empty">not filled in yet</span>'}</span></div>`).join('')}</div>${sigHtml(c)}</div>`;
+    bindSig(cardEl, ()=>{ order=order.map(x=>S.cards.find(y=>y.photo===x.photo)||x); renderCard(); });
   }
   const s=document.getElementById('star'); const on=!!stars[c.photo]; s.setAttribute('aria-pressed',on); s.textContent=on?'★ Starred':'☆ Star';
   document.getElementById('editor').hidden=true;
 }
 let lastFlip=0;
-cardEl.addEventListener('pointerdown', e=>{ if(e.button&&e.button!==0) return; if(e.target.closest('a')) return; const t=Date.now(); if(t-lastFlip<250) return; lastFlip=t; flipped=!flipped; renderCard(); });
-cardEl.addEventListener('click', e=>{ if(e.target.closest('a')) return; e.preventDefault(); });
-cardEl.addEventListener('keydown', e=>{ if(e.key===' '||e.key==='Enter'){e.preventDefault();flipped=!flipped;renderCard();} });
+cardEl.addEventListener('pointerdown', e=>{ if(e.button&&e.button!==0) return; if(e.target.closest('a,.sig')) return; const t=Date.now(); if(t-lastFlip<250) return; lastFlip=t; flipped=!flipped; renderCard(); });
+cardEl.addEventListener('click', e=>{ if(e.target.closest('a,.sig')) return; e.preventDefault(); });
+cardEl.addEventListener('keydown', e=>{ if(e.target!==cardEl) return; if(e.key===' '||e.key==='Enter'){e.preventDefault();flipped=!flipped;renderCard();} });
 document.getElementById('next').onpointerdown=e=>{ if(e.button) return; if(!order.length) return; idx=(idx+1)%order.length; flipped=false; editing=false; renderCard(); };
 document.getElementById('prev').onpointerdown=e=>{ if(e.button) return; if(!order.length) return; idx=(idx-1+order.length)%order.length; flipped=false; editing=false; renderCard(); };
 document.getElementById('shuffle').onclick=()=>{ shuffle(order); idx=0; flipped=false; editing=false; renderCard(); };
@@ -248,6 +249,7 @@ function renderDir(){
   out.innerHTML=(dirOpen?renderDirDetail():'')+`<div class="count">${list.length} match${list.length===1?'':'es'}</div>`+list.map(c=>{ const h=hay(c); let snip=''; if(q){ const i=h.indexOf(q); if(i>=0) snip=h.slice(Math.max(0,i-40),i+60).replace(/^\S*\s/,'').replace(/\s\S*$/,''); }
     return `<button class="tile" data-p="${c.photo}" style="display:flex;width:100%;align-items:center;gap:12px;margin-top:8px;padding:8px"><img src="${IMG(c.photo)}" alt="" style="width:56px;height:56px;border-radius:10px;flex:none"><div style="padding:0"><div>${esc(c.name)}</div><small>${esc(c.cls)}${c.home?' · '+esc(c.home):''}</small>${snip?`<small style="color:var(--ink2)">…${esc(snip)}…</small>`:''}</div></button>`; }).join('');
   out.querySelectorAll('.tile').forEach(t=>t.onclick=()=>{ openInDir(t.dataset.p); });
+  bindSig(out, renderDir);
   const dc=out.querySelector('#dirclose'); if(dc) dc.onclick=()=>{ dirOpen=null; dirEdit=false; renderDir(); };
   const de=out.querySelector('#diredit'); if(de) de.onclick=()=>{ if(!me){askName();return;} dirEdit=!dirEdit; renderDir(); };
   if(dirOpen&&dirEdit) renderEditorInto(out.querySelector('#direditor'), S.cards.find(x=>x.photo===dirOpen), ()=>{ dirEdit=false; renderDir(); });
@@ -263,7 +265,7 @@ function renderDirDetail(){
   const c=S.cards.find(x=>x.photo===dirOpen); if(!c) return '';
   const rows=FIELDS.map(([k,l])=>[l,c[k]]).concat(Object.entries(c.extra||{}));
   rows.push(['LinkedIn', c.li?`<a href="https://www.linkedin.com/in/${esc(c.li)}/" target="_blank" rel="noopener">linkedin.com/in/${esc(c.li)}</a>`:'', true]);
-  return `<div id="dirdetail" class="card" style="margin-top:12px;cursor:default"><div class="back"><img src="${IMG(c.photo)}" alt=""><div><h2>${esc(c.name)}</h2>${c.alias?`<div class="alias">${esc(c.alias)}</div>`:''}<span class="tag">${esc(c.cls)}</span></div><div class="facts">${rows.map(([k,v,raw])=>`<div><b>${esc(k)}</b><span>${v?(raw?v:esc(v)):'<span class="empty">not filled in yet</span>'}</span></div>`).join('')}</div></div></div>
+  return `<div id="dirdetail" class="card" style="margin-top:12px;cursor:default"><div class="back"><img src="${IMG(c.photo)}" alt=""><div><h2>${esc(c.name)}</h2>${c.alias?`<div class="alias">${esc(c.alias)}</div>`:''}<span class="tag">${esc(c.cls)}</span></div><div class="facts">${rows.map(([k,v,raw])=>`<div><b>${esc(k)}</b><span>${v?(raw?v:esc(v)):'<span class="empty">not filled in yet</span>'}</span></div>`).join('')}</div>${sigHtml(c)}</div></div>
     <div class="ctrl"><button class="btn" id="dirclose">Close</button><button class="btn primary" id="diredit">${dirEdit?'Close editor':'✎ Edit this brother'}</button></div><div id="direditor" ${dirEdit?'':'hidden'}></div>`;
 }
 
@@ -358,6 +360,56 @@ function renderRecite(){
     const ok=await commit(null, st=>{ st.recitals.unshift({who:me,at:when(),passage:p.id,pct:g.pct}); if(st.recitals.length>400) st.recitals.length=400; });
     const ls=recEl.querySelector('#logst'); if(ls) ls.textContent = ok ? 'Logged to your record ('+g.pct+'%). Every check counts, so no free tries.' : 'Not logged (see message).';
   };
+}
+
+// ---------- sig tasks (stored on each brother's card as c.sig) ----------
+const SIG=['none','requested','confirmed','done','signed'];
+const SIGL={none:'Not asked',requested:'Requested',confirmed:'Confirmed',done:'Done, needs signature',signed:'Signed'};
+const SIG_TARGET={pct:75, by:'2026-10-11'};
+const sigOf = c => (c&&c.sig)||{status:'none'};
+const sigCards = () => S.cards.filter(c=>c.sig);
+const mdy = iso => +iso.slice(5,7)+'/'+ +iso.slice(8,10);
+function sigProgress(){ const all=sigCards(), k=all.filter(c=>sigOf(c).status==='signed').length, tgt=Math.ceil(all.length*SIG_TARGET.pct/100); return `Signed ${k} of ${all.length} · target ${SIG_TARGET.pct}% (${tgt}) by ${mdy(SIG_TARGET.by)}`; }
+function sigSet(photo, upd){
+  const c=S.cards.find(x=>x.photo===photo), b=sigOf(c);
+  const changes=Object.keys(upd).filter(k=>!k.endsWith('At')).map(k=>({field:'Sig task · '+k,from:String(k==='status'?SIGL[b[k]]:b[k]??''),to:String(k==='status'?SIGL[upd[k]]:upd[k]??'')}));
+  return commit({who:me,at:when(),card:c.name,changes}, st=>{ const t=st.cards.find(x=>x.photo===photo); const g=Object.assign({status:'none'},t.sig||{},upd); for(const k of Object.keys(g)) if(g[k]===''||g[k]==null) delete g[k]; t.sig=g; });
+}
+function sigStep(photo, dir){ const st=sigOf(S.cards.find(x=>x.photo===photo)).status, i=SIG.indexOf(st)+dir; if(i<0||i>=SIG.length) return Promise.resolve(false);
+  return sigSet(photo, dir>0 ? {status:SIG[i],[SIG[i]+'At']:when()} : {status:SIG[i],[st+'At']:''}); }
+const sigChip = st => `<span class="schip s-${st}">${esc(SIGL[st]||st)}</span>`;
+const sigDiff = d => d?`<span class="diff" title="Difficulty">${+d}/10</span>`:'';
+function sigHtml(c){
+  if(!c||c.cls==='Beta Omega') return ''; const g=sigOf(c), i=SIG.indexOf(g.status);
+  return `<div class="sig" data-sig="${esc(c.photo)}"><div class="sigtop"><b>Sig task</b>${sigChip(g.status)}${sigDiff(g.difficulty)}</div>
+    <button class="sigtask" data-sigtask title="Edit the task">${g.task?esc(g.task):'<span class="empty">No task text yet</span>'} <span class="pen">✎</span></button>${g.notes?`<div class="status">${esc(g.notes)}</div>`:''}
+    <div class="sigedit"><label>Owner<select data-sigowner><option value="">No owner</option>${PC().map(n=>`<option value="${esc(n)}" ${g.owner===n?'selected':''}>${esc(n)}</option>`).join('')}</select></label>
+      <label>Difficulty<select data-sigdiff><option value="">—</option>${[1,2,3,4,5,6,7,8,9,10].map(d=>`<option ${+g.difficulty===d?'selected':''}>${d}</option>`).join('')}</select></label></div>
+    <div class="ctrl">${i>0?`<button class="btn" data-sigback style="flex:0 0 auto">← Back</button>`:''}${i<SIG.length-1?`<button class="btn" data-signext>Next step → ${esc(SIGL[SIG[i+1]])}</button>`:''}</div></div>`;
+}
+function bindSig(root, rerender){
+  const ph=el=>el.closest('[data-sig]').dataset.sig, run=async p=>{ if(await p) rerender(); };
+  root.querySelectorAll('[data-signext]').forEach(b=>b.onclick=()=>{ b.disabled=true; run(sigStep(ph(b),1)); });
+  root.querySelectorAll('[data-sigback]').forEach(b=>b.onclick=()=>{ b.disabled=true; run(sigStep(ph(b),-1)); });
+  root.querySelectorAll('[data-sigowner]').forEach(x=>x.onchange=()=>run(sigSet(ph(x),{owner:x.value})));
+  root.querySelectorAll('[data-sigdiff]').forEach(x=>x.onchange=()=>run(sigSet(ph(x),{difficulty:x.value?+x.value:''})));
+  root.querySelectorAll('[data-sigtask]').forEach(b=>b.onclick=()=>{ const g=sigOf(S.cards.find(x=>x.photo===ph(b))); const v=prompt('Sig task',g.task||''); if(v===null||v.trim()===(g.task||'')) return; run(sigSet(ph(b),{task:v.trim()})); });
+  root.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>openInDir(ph(b)));
+}
+const sigsEl=document.getElementById('sigs');
+let sigMine=false;
+function renderSigs(){
+  const list=sigCards().filter(c=>!sigMine||sigOf(c).owner===me), nm=(a,b)=>a.name.localeCompare(b.name);
+  const cols=[['To request',['none','requested'],(a,b)=>SIG.indexOf(sigOf(a).status)-SIG.indexOf(sigOf(b).status)||nm(a,b)],
+    ['In progress',['confirmed','done'],(a,b)=>(+sigOf(a).difficulty||99)-(+sigOf(b).difficulty||99)||nm(a,b)],
+    ['Signed',['signed'],(a,b)=>(sigOf(b).signedAt||'')<(sigOf(a).signedAt||'')?-1:1]];
+  const row=c=>{ const g=sigOf(c); return `<div class="sigr" data-sig="${esc(c.photo)}"><button class="nm" data-open>${esc(c.name)}<small>${esc(c.cls.split(' (')[0])} · ${g.owner?esc(first(g.owner)):'no owner'}</small></button>${sigDiff(g.difficulty)}${sigChip(g.status)}${g.status!=='signed'?`<button class="nx" data-signext aria-label="Next step">→</button>`:''}</div>`; };
+  sigsEl.innerHTML=`<div class="status" style="margin-top:14px"><b>${esc(sigProgress())}</b></div>
+    <div class="chips"><button class="chip" data-sm="0" aria-pressed="${!sigMine}">All</button><button class="chip" data-sm="1" aria-pressed="${sigMine}">Mine</button></div>
+    <div class="sigcols">${cols.map(([h,sts,sort])=>{ const xs=list.filter(c=>sts.includes(sigOf(c).status)).sort(sort); return `<div><h3 class="sec">${h} <small>${xs.length}</small></h3>${xs.map(row).join('')||'<div class="status">None</div>'}</div>`; }).join('')}</div>
+    <div class="status">Tap a name to open the brother. → moves the sig task to its next step.</div>`;
+  sigsEl.querySelectorAll('[data-sm]').forEach(b=>b.onclick=()=>{ sigMine=b.dataset.sm==='1'; renderSigs(); });
+  bindSig(sigsEl, renderSigs);
 }
 
 // ---------- tasks ----------
@@ -621,11 +673,11 @@ function render(){
   document.getElementById('count').textContent=`${pool().length} in this set · ${Object.keys(stars).length} starred · data v${S.version}`;
   const showChips = mode==='learn'||mode==='quiz';
   chipsEl.hidden=!showChips; document.getElementById('count').hidden=!showChips;
-  for(const id of ['today','learn','quiz','roll','recite','tasks','guide','facts','acct','log']) document.getElementById(id).hidden = mode!==id;
+  for(const id of ['today','learn','quiz','roll','recite','tasks','sigs','guide','facts','acct','log']) document.getElementById(id).hidden = mode!==id;
   const tab=tabOf(mode);
   document.querySelectorAll('[role=tab]').forEach(t=>t.setAttribute('aria-selected', t.dataset.tab===tab));
-  document.getElementById('studysub').hidden = tab!=='study'; document.getElementById('infosub').hidden = tab!=='info';
-  document.querySelectorAll('#studysub [data-m],#infosub [data-m]').forEach(b=>b.setAttribute('aria-pressed', b.dataset.m===mode));
+  document.getElementById('studysub').hidden = tab!=='study'; document.getElementById('infosub').hidden = tab!=='info'; document.getElementById('tasksub').hidden = tab!=='tasks';
+  document.querySelectorAll('#studysub [data-m],#infosub [data-m],#tasksub [data-m]').forEach(b=>b.setAttribute('aria-pressed', b.dataset.m===mode));
   if(mode==='learn'){ document.getElementById('v-cards').setAttribute('aria-pressed',view==='cards'); document.getElementById('v-grid').setAttribute('aria-pressed',view==='grid'); document.getElementById('v-dir').setAttribute('aria-pressed',view==='dir'); document.getElementById('cardwrap').hidden=view!=='cards'; gridEl.hidden=view!=='grid'; document.getElementById('dir').hidden=view!=='dir'; if(view==='cards') renderCard(); else if(view==='grid') renderGrid(); else renderDir(); }
   else if(mode==='today') renderToday();
   else if(mode==='roll') renderRoll();
@@ -633,10 +685,11 @@ function render(){
   else if(mode==='acct') renderAcct();
   else if(mode==='recite') renderRecite();
   else if(mode==='tasks') renderTasks();
+  else if(mode==='sigs') renderSigs();
   else if(mode==='facts') renderFacts();
   else if(mode==='guide') renderGuide();
   else if(mode==='log') renderLog();
 }
 renderWho(); setStatus('Loading…');
 Promise.all([loadPhotos(),refresh()]).then(()=>{ renderChips(); resetOrder(); render(); if(!me) setTimeout(askName, 300); });
-setInterval(()=>{ const ae=document.activeElement, typing=ae&&(ae.tagName==='TEXTAREA'||(ae.tagName==='INPUT'&&ae.type!=='checkbox')); if(document.visibilityState==='visible' && !typing && !tEdit && !editing && !recording && !dirEdit && mode!=='learn' && mode!=='quiz') refresh().then(()=>{ order=order.map(c=>S.cards.find(x=>x.photo===c.photo)||c); drun=drun.map(c=>S.cards.find(x=>x.photo===c.photo)||c); if(['today','tasks','acct','log','facts','guide'].includes(mode)) render(); }); }, 30000);
+setInterval(()=>{ const ae=document.activeElement, typing=ae&&(ae.tagName==='TEXTAREA'||(ae.tagName==='INPUT'&&ae.type!=='checkbox')); if(document.visibilityState==='visible' && !typing && !tEdit && !editing && !recording && !dirEdit && mode!=='learn' && mode!=='quiz') refresh().then(()=>{ order=order.map(c=>S.cards.find(x=>x.photo===c.photo)||c); drun=drun.map(c=>S.cards.find(x=>x.photo===c.photo)||c); if(['today','tasks','sigs','acct','log','facts','guide'].includes(mode)) render(); }); }, 30000);
