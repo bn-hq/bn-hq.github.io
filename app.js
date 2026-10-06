@@ -589,9 +589,9 @@ function gradeFor(n){
 function gradesHtml(){
   const rows=PC().map(n=>[n,gradeFor(n)]).sort((a,b)=>(b[1]?b[1].pct:-1)-(a[1]?a[1].pct:-1)||a[0].localeCompare(b[0]));
   return `<div class="editor" style="margin-top:12px"><h2>Grades</h2>
-    <div class="status">Half tasks done (of what's due so far), half informals vs where you should be by today. ${informals()?esc(informalsUpdated())+'.':'Informals not synced yet, so tasks only.'}</div>
+    <div class="status">Half tasks done (of what's due so far), half informals vs pace (target 25, Ali 30, by 10/11; pace = where you should be by today). ${informals()?esc(informalsUpdated())+'.':'Informals not synced yet, so tasks only.'}</div>
     <div style="overflow-x:auto"><table class="lb grades"><tr><th>Pledge</th><th class="n">Tasks</th><th class="n">Informals</th><th class="n">Grade</th></tr>
-    ${rows.map(([n,g])=>`<tr><td>${esc(first(n))}${n===me?' <b>(you)</b>':''}</td><td class="n">${g&&g.tasks[1]?g.tasks[0]+'/'+g.tasks[1]+' due':'none due'}${g&&g.up?`<small style="display:block;color:var(--ink2);font-size:12px">${g.up} upcoming</small>`:''}</td><td class="n">${g&&g.inf?`${g.inf[0]}<small style="display:block;color:var(--ink2);font-size:12px">of ${pace(g.inf[0],g.inf[1],INFORMALS.by).exp} by now</small>`:'—'}</td><td class="n grade${g&&g.pct>=90?' hit':''}">${g?`${g.letter}<small style="display:block;color:var(--ink2);font-size:12px;font-weight:400">${g.pct}%</small>`:'—'}</td></tr>`).join('')}</table></div></div>`;
+    ${rows.map(([n,g])=>`<tr><td>${esc(first(n))}${n===me?' <b>(you)</b>':''}</td><td class="n">${g&&g.tasks[1]?g.tasks[0]+'/'+g.tasks[1]+' due':'none due'}${g&&g.up?`<small style="display:block;color:var(--ink2);font-size:12px">${g.up} upcoming</small>`:''}</td><td class="n">${g&&g.inf?`${g.inf[0]}/${g.inf[1]}<small style="display:block;color:var(--ink2);font-size:12px">pace: ${pace(g.inf[0],g.inf[1],INFORMALS.by).exp} by today</small>`:'—'}</td><td class="n grade${g&&g.pct>=90?' hit':''}">${g?`${g.letter}<small style="display:block;color:var(--ink2);font-size:12px;font-weight:400">${g.pct}%</small>`:'—'}</td></tr>`).join('')}</table></div></div>`;
 }
 
 function renderAcct(){
@@ -963,7 +963,7 @@ function renderRollBoard(){
 }
 
 // ---------- error safety net ----------
-function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06z'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
+function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06z2'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
   b.innerHTML='<span style="flex:1;word-break:break-word">Something broke: '+esc(msg)+'</span><button onclick="location.reload()" style="border:0;background:#fff;color:#B23A3A;border-radius:8px;padding:6px 10px;font:600 13px \'Public Sans\',sans-serif;cursor:pointer">Reload</button><button onclick="document.getElementById(\'errbar\').remove()" style="border:0;background:transparent;color:#fff;font-size:18px;cursor:pointer">×</button>'; }
 window.addEventListener('error', e=>{ showErr((e.message||'error')+' @'+(e.lineno||'?')); try{ render(); }catch(x){} });
 window.addEventListener('unhandledrejection', e=>{ showErr('async: '+((e.reason&&e.reason.message)||e.reason||'error')); });
