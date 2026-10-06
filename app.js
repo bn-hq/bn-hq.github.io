@@ -349,33 +349,28 @@ function sigHtml(c){
   if(!c||c.cls==='Beta Omega') return ''; const g=sigOf(c), i=SIG.indexOf(g.status);
   return `<div class="sig" data-sig="${esc(c.photo)}"><div class="sigtop"><b>Sig task</b>${sigChip(g.status)}${sigDiff(g.difficulty)}</div>
     <button class="sigtask" ${fromSheet(c)&&SIGSHEET[c.photo].task?'disabled':'data-sigtask'} title="Edit the task">${g.task?esc(g.task):'<span class="empty">No task text yet</span>'} <span class="pen">✎</span></button>${g.notes?`<div class="status">${esc(g.notes)}</div>`:''}
-    <div class="sigedit"><label>Owner<select data-sigowner><option value="">No owner</option>${PC().map(n=>`<option value="${esc(n)}" ${g.owner===n?'selected':''}>${esc(n)}</option>`).join('')}</select></label>
-      <label>Difficulty<select data-sigdiff><option value="">—</option>${[1,2,3,4,5,6,7,8,9,10].map(d=>`<option ${+g.difficulty===d?'selected':''}>${d}</option>`).join('')}</select></label></div>
+    <div class="sigedit"><label>Difficulty<select data-sigdiff><option value="">—</option>${[1,2,3,4,5,6,7,8,9,10].map(d=>`<option ${+g.difficulty===d?'selected':''}>${d}</option>`).join('')}</select></label></div>
     ${fromSheet(c)?`<div class="status">Status comes from the ${SHEETS.sigs.name}; update it there.</div>`:`<div class="ctrl">${i>0?`<button class="btn" data-sigback style="flex:0 0 auto">← Back</button>`:''}${i<SIG.length-1?`<button class="btn" data-signext>Next step → ${esc(SIGL[SIG[i+1]])}</button>`:''}</div>`}</div>`;
 }
 function bindSig(root, rerender){
   const ph=el=>el.closest('[data-sig]').dataset.sig, run=async p=>{ if(await p) rerender(); };
   root.querySelectorAll('[data-signext]').forEach(b=>b.onclick=()=>{ b.disabled=true; run(sigStep(ph(b),1)); });
   root.querySelectorAll('[data-sigback]').forEach(b=>b.onclick=()=>{ b.disabled=true; run(sigStep(ph(b),-1)); });
-  root.querySelectorAll('[data-sigowner]').forEach(x=>x.onchange=()=>run(sigSet(ph(x),{owner:x.value})));
   root.querySelectorAll('[data-sigdiff]').forEach(x=>x.onchange=()=>run(sigSet(ph(x),{difficulty:x.value?+x.value:''})));
   root.querySelectorAll('[data-sigtask]').forEach(b=>b.onclick=()=>{ const g=sigOf(S.cards.find(x=>x.photo===ph(b))); const v=prompt('Sig task',g.task||''); if(v===null||v.trim()===(g.task||'')) return; run(sigSet(ph(b),{task:v.trim()})); });
   root.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>openInDir(ph(b)));
 }
-const sigRow = (c,long) => { const g=sigOf(c); return `<div class="sigr" data-sig="${esc(c.photo)}"><button class="nm" data-open>${esc(c.name)}<small>${esc(c.cls.split(' (')[0])} · ${g.owner?esc(first(g.owner)):'no owner'}</small></button>${sigDiff(g.difficulty)}${sigChip(g.status)}${g.status==='signed'||fromSheet(c)?'':long?`<button class="small nxl" data-signext>Next step →</button>`:`<button class="nx" data-signext aria-label="Next step">→</button>`}</div>`; };
+const sigRow = (c,long) => { const g=sigOf(c); return `<div class="sigr" data-sig="${esc(c.photo)}"><button class="nm" data-open>${esc(c.name)}<small>${esc(c.cls.split(' (')[0])}</small></button>${sigDiff(g.difficulty)}${sigChip(g.status)}${g.status==='signed'||fromSheet(c)?'':long?`<button class="small nxl" data-signext>Next step →</button>`:`<button class="nx" data-signext aria-label="Next step">→</button>`}</div>`; };
 const sigsEl=document.getElementById('sigs');
-let sigMine=false;
 function renderSigs(){
-  const list=sigCards().filter(c=>!sigMine||sigOf(c).owner===me), nm=(a,b)=>a.name.localeCompare(b.name);
+  const list=sigCards(), nm=(a,b)=>a.name.localeCompare(b.name);
   const cols=[['To request',['none','requested'],(a,b)=>SIG.indexOf(sigOf(a).status)-SIG.indexOf(sigOf(b).status)||nm(a,b)],
     ['In progress',['confirmed','done'],(a,b)=>(+sigOf(a).difficulty||99)-(+sigOf(b).difficulty||99)||nm(a,b)],
     ['Signed',['signed'],(a,b)=>(sigOf(b).signedAt||'')<(sigOf(a).signedAt||'')?-1:1]];
   const row=c=>sigRow(c);
   sigsEl.innerHTML=`<div class="status" style="margin-top:14px"><b>${esc(sigProgress())}</b></div>
-    <div class="chips"><button class="chip" data-sm="0" aria-pressed="${!sigMine}">All</button><button class="chip" data-sm="1" aria-pressed="${sigMine}">Mine</button></div>
     <div class="sigcols">${cols.map(([h,sts,sort])=>{ const xs=list.filter(c=>sts.includes(sigOf(c).status)).sort(sort); return `<div><h3 class="sec">${h} <small>${xs.length}</small></h3>${xs.map(row).join('')||'<div class="status">None</div>'}</div>`; }).join('')}</div>
-    <div class="status">Tap a name to open the brother. → moves the sig task to its next step.</div>`;
-  sigsEl.querySelectorAll('[data-sm]').forEach(b=>b.onclick=()=>{ sigMine=b.dataset.sm==='1'; renderSigs(); });
+    <div class="status">Every sig task is done by the whole class together. Tap a name to open the brother. → moves the sig task to its next step.</div>`;
   bindSig(sigsEl, renderSigs);
 }
 
@@ -535,17 +530,16 @@ function weekPoints(n, ws){
   // points for the week starting ws (Monday), from timestamps already stored
   const we=addDays(ws,6), inWk=ts=>{ if(!ts) return false; const d=isoDay(ts); return d>=ws&&d<=we; };
   const tasks=S.tasks.filter(t=>inWk((t.done||{})[n])).length;
-  const sigs=S.cards.filter(c=>{ const g=sigOf(c); return g.owner===n&&g.status==='signed'&&inWk(g.signedAt); }).length;
   const perfect=S.recitals.filter(r=>r.who===n&&String(r.passage).startsWith('roll:')&&r.pct===100&&inWk(r.at)).length;
   const faces=Object.values(S.drill[n]||{}).filter(x=>x.last==='ok'&&(x.streak||0)>=2&&inWk(x.at)).length;
-  return {n, tasks, sigs, perfect, faces, pts:tasks+3*sigs+perfect+faces};
+  return {n, tasks, perfect, faces, pts:tasks+perfect+faces};
 }
 function rankHtml(){
   const ws=addDays(weekStart(today()),-7*rankWeek), rows=PC().map(n=>weekPoints(n,ws)).sort((a,b)=>b.pts-a.pts||a.n.localeCompare(b.n));
-  const why=r=>[r.tasks&&r.tasks+' task'+(r.tasks===1?'':'s'),r.sigs&&r.sigs+' sig'+(r.sigs===1?'':'s'),r.perfect&&r.perfect+' perfect',r.faces&&r.faces+' face'+(r.faces===1?'':'s')].filter(Boolean).join(' · ');
+  const why=r=>[r.tasks&&r.tasks+' task'+(r.tasks===1?'':'s'),r.perfect&&r.perfect+' perfect',r.faces&&r.faces+' face'+(r.faces===1?'':'s')].filter(Boolean).join(' · ');
   return `<div class="editor" style="margin-top:12px"><h2>Weekly ranking</h2>
     <div class="sub" style="margin-top:0"><button data-rw="0" aria-pressed="${!rankWeek}">This week</button><button data-rw="1" aria-pressed="${!!rankWeek}">Last week</button></div>
-    <div class="status">${esc(dayLabel(ws).replace(/^\w+, /,''))} – ${esc(dayLabel(addDays(ws,6)).replace(/^\w+, /,''))}. 1 point per task checked off, 3 per sig task you own that gets signed, 1 per 100% Spell, 1 per face that turns solid.</div>
+    <div class="status">${esc(dayLabel(ws).replace(/^\w+, /,''))} – ${esc(dayLabel(addDays(ws,6)).replace(/^\w+, /,''))}. 1 point per task checked off, 1 per 100% Spell, 1 per face that turns solid.</div>
     ${rows[0].pts?'':'<div class="status">No points yet. The top 3 show once someone scores.</div>'}<div class="podium">${rows.slice(0,rows[0].pts?3:0).map((r,i)=>`<div class="pod"><span class="pl">${i+1}</span><div><b>${esc(r.n)}${r.n===me?' (you)':''}</b><small>${esc(why(r))||'No points yet'}</small></div><span class="pts">${r.pts}</span></div>`).join('')}</div>
     <table class="lb">${rows.slice(rows[0].pts?3:0).map((r,i)=>`<tr><td class="n" style="width:2em;text-align:left">${i+(rows[0].pts?4:1)}</td><td>${esc(r.n)}${r.n===me?' <b>(you)</b>':''}</td><td class="n">${r.pts}</td></tr>`).join('')}</table></div>`;
 }
@@ -557,14 +551,14 @@ function renderAcct(){
     const spell=ROLLS.map(r=>rollBest(n,r.cls));
     const mine=S.tasks.filter(t=>isFor(t,n)), done=mine.filter(t=>isDone(t,n)).length;
     const hits=(solid>=total?1:0)+spell.filter(b=>b===100).length+(mine.length&&done===mine.length?1:0);
-    const sigs=sigCards().filter(c=>{ const g=sigOf(c); return g.owner===n&&g.status==='signed'; }).length;
-    return {n,solid,spell,done,assigned:mine.length,hits,sigs};
+    return {n,solid,spell,done,assigned:mine.length,hits};
   }).sort((a,b)=>b.hits-a.hits||b.solid-a.solid);
+  const clsSigs=sigCards().filter(c=>sigOf(c).status==='signed').length+'/'+sigCards().length;
   const pctCell=b=>`<td class="n${b===100?' hit':''}">${b===null?'—':b+'%'}</td>`;
   acctEl.innerHTML=milestonesHtml()+informalsHtml()+rankHtml()+`<div class="editor" style="margin-top:12px"><h2>Where everyone stands</h2>
-    <div class="status">Green = target hit. Faces = brothers rated 5 twice in a row. Spell = best score (target 100%). Tasks = done / assigned. Sigs signed = sig tasks you own that reached Signed.</div>
+    <div class="status">Green = target hit. Faces = brothers rated 5 twice in a row. Spell = best score (target 100%). Tasks = done / assigned. Sigs signed = the class's signed sig tasks (done together).</div>
     <div style="overflow-x:auto"><table class="lb"><tr><th>Pledge</th><th class="n">Faces</th>${ROLLS.map(r=>`<th class="n">${esc(r.cls.replace('Beta ',''))}</th>`).join('')}<th class="n">Tasks</th><th class="n">Sigs signed</th></tr>
-    ${rows.map(r=>`<tr><td>${esc(r.n.split(' ')[0])}${r.n===me?' <b>(you)</b>':''}</td><td class="n${r.solid>=total?' hit':''}">${r.solid}/${total}</td>${r.spell.map(pctCell).join('')}<td class="n${r.assigned&&r.done===r.assigned?' hit':''}">${r.done}/${r.assigned}</td><td class="n">${r.sigs}</td></tr>`).join('')}</table></div>
+    ${rows.map(r=>`<tr><td>${esc(r.n.split(' ')[0])}${r.n===me?' <b>(you)</b>':''}</td><td class="n${r.solid>=total?' hit':''}">${r.solid}/${total}</td>${r.spell.map(pctCell).join('')}<td class="n${r.assigned&&r.done===r.assigned?' hit':''}">${r.done}/${r.assigned}</td><td class="n">${clsSigs}</td></tr>`).join('')}</table></div>
     <div class="status">Spell columns: Psi, Chi, Phi, Upsilon rolls.</div></div>
     ${me&&S.drill[me]?`<div class="editor" style="margin-top:12px"><h2>Your weak spots</h2><div class="grid" style="margin-top:6px">${S.cards.filter(c=>{const x=S.drill[me][c.photo]; return x&&x.last!=='ok';}).map(c=>{const x=S.drill[me][c.photo]; return `<div class="tile"><img src="${IMG(c.photo)}" alt=""><div>${esc(c.name)}<small>${x.last==='miss'?'name wrong':'facts shaky'} · ${x.miss} wrong · ${x.some||0} partial</small></div></div>`;}).join('')||'<div class="status">No misses on record. Either you are cracked or you have not drilled.</div>'}</div></div>`:''}`;
   acctEl.querySelectorAll('[data-rw]').forEach(b=>b.onclick=()=>{ rankWeek=+b.dataset.rw; renderAcct(); });
@@ -645,7 +639,7 @@ function renderToday(){
     ${myMilestonesHtml()}
     <div class="editor"><h2>Your progress</h2><div class="status">Faces solid <b>${solid}/${S.cards.length}</b> · Rolls spelled 100% <b>${spell}/${ROLLS.length}</b></div>
       <div class="ctrl"><button class="btn primary" id="tdrill">Start drill</button></div></div>
-    ${(()=>{ const own=sigCards().filter(c=>sigOf(c).owner===me&&sigOf(c).status!=='signed').sort((a,b)=>SIG.indexOf(sigOf(b).status)-SIG.indexOf(sigOf(a).status)); return own.length?`<h3 class="sec">Sig tasks I own <small>${own.length}</small></h3>${own.map(c=>sigRow(c,true)).join('')}`:''; })()}
+    ${(()=>{ const nx=sigCards().filter(c=>['confirmed','done'].includes(sigOf(c).status)).sort((a,b)=>(+sigOf(a).difficulty||99)-(+sigOf(b).difficulty||99)||a.name.localeCompare(b.name)); return nx.length?`<h3 class="sec">Next sig tasks <small>${nx.length} in progress · easiest first</small></h3>${nx.slice(0,5).map(c=>sigRow(c,true)).join('')}${nx.length>5?`<div class="status"><button class="small" id="allsigs">See all ${nx.length}</button></div>`:''}`:''; })()}
     ${plan.catchup.length?`<h3 class="sec">Catch up <small>${plan.catchup.filter(t=>isDone(t,me)).length} of ${plan.catchup.length} done</small></h3>${plan.catchup.map(t=>checkRow(t,me,true)).join('')}`:''}
     ${plan.days.length?plan.days.map(([d,ts])=>`<h3 class="sec">${esc(dayName(d))}</h3><div class="status" style="margin:0 0 2px">${goal(d,ts)}</div>${ts.map(t=>checkRow(t,me,false)).join('')}`).join('')
       :plan.catchup.length?'':`<div class="reveal" style="margin-top:14px;text-align:center"><div class="big">Nothing due 🎉</div><div class="ctrl"><button class="btn" id="tstudy">Go to Study</button></div></div>`}
@@ -653,6 +647,7 @@ function renderToday(){
   const od=todayEl.querySelector('.ogd'); if(od) od.ontoggle=()=>{ ongoingOpen=od.open; };
   todayEl.querySelector('#tdrill').onclick=()=>{ filter='all'; renderChips(); setMode('quiz'); };
   const sb=todayEl.querySelector('#tstudy'); if(sb) sb.onclick=()=>setMode(lastStudy);
+  const as=todayEl.querySelector('#allsigs'); if(as) as.onclick=()=>setMode('sigs');
   bindTasks(todayEl, renderToday); bindSig(todayEl, renderToday);
 }
 
@@ -722,7 +717,7 @@ function renderRollBoard(){
 }
 
 // ---------- error safety net ----------
-function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06h'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
+function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06i'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
   b.innerHTML='<span style="flex:1;word-break:break-word">Something broke: '+esc(msg)+'</span><button onclick="location.reload()" style="border:0;background:#fff;color:#B23A3A;border-radius:8px;padding:6px 10px;font:600 13px \'Public Sans\',sans-serif;cursor:pointer">Reload</button><button onclick="document.getElementById(\'errbar\').remove()" style="border:0;background:transparent;color:#fff;font-size:18px;cursor:pointer">×</button>'; }
 window.addEventListener('error', e=>{ showErr((e.message||'error')+' @'+(e.lineno||'?')); try{ render(); }catch(x){} });
 window.addEventListener('unhandledrejection', e=>{ showErr('async: '+((e.reason&&e.reason.message)||e.reason||'error')); });
