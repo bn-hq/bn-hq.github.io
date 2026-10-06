@@ -9,11 +9,11 @@ function fromDb(d){
   d=d||{};
   const cards=objToArr(d.cards,'order'); cards.forEach(c=>{ c.extra=c.extra||{}; });
   const byAtDesc=(a,b)=>(a.at<b.at?1:-1);
-  return { version:d.version||0, cards, log:objToArr(d.log).sort(byAtDesc), facts:objToArr(d.facts,'order'), tasks:objToArr(d.tasks).sort((a,b)=>(a.due||'9999')<(b.due||'9999')?-1:1), recitals:objToArr(d.recitals).sort(byAtDesc), guide:objToArr(d.guide,'order'), passages: d.passages? objToArr(d.passages,'order') : SEED.passages, drill:d.drill||{}, informals:d.informals||null, exams:d.exams||{}, quiz:d.quiz||null, recaps:d.recaps||{}, pending:objToArr(d.pending).sort((a,b)=>(a.at<b.at?-1:1)), commitments:objToArr(d.commitments) };
+  return { version:d.version||0, cards, log:objToArr(d.log).sort(byAtDesc), facts:objToArr(d.facts,'order'), tasks:objToArr(d.tasks).sort((a,b)=>(a.due||'9999')<(b.due||'9999')?-1:1), recitals:objToArr(d.recitals).sort(byAtDesc), guide:objToArr(d.guide,'order'), passages: d.passages? objToArr(d.passages,'order') : SEED.passages, drill:d.drill||{}, informals:d.informals||null, exams:d.exams||{}, quiz:d.quiz||null, recaps:d.recaps||{}, pending:objToArr(d.pending).sort((a,b)=>(a.at<b.at?-1:1)), commitments:objToArr(d.commitments), suggestions:objToArr(d.suggestions).sort(byAtDesc) };
 }
 async function dbGet(path){ const r=await fetch(DB+'/'+path+'.json',{cache:'no-store'}); if(!r.ok) throw new Error('read '+r.status); return r.json(); }
 async function dbWrite(method,path,body){ const r=await fetch(DB+'/'+path+'.json',{method,body:body===undefined?undefined:JSON.stringify(body)}); if(!r.ok) throw new Error('write '+r.status); return r.json(); }
-const KEYS=['version','cards','log','facts','tasks','recitals','passages','drill','guide','informals','exams','quiz','recaps','pending','commitments'];
+const KEYS=['version','cards','log','facts','tasks','recitals','passages','drill','guide','informals','exams','quiz','recaps','pending','commitments','suggestions'];
 async function loadPhotos(){
   if(Object.keys(URIS).length) return;
   try{ const c=localStorage.getItem('bn-photos'); if(c){ URIS=JSON.parse(c); if(Object.keys(URIS).length) { checkPhotoVersion(); return; } } }catch(e){}
@@ -150,7 +150,7 @@ function renderChips(){
   chipsEl.innerHTML = items.map(([k,l])=>`<button class="chip" data-f="${esc(k)}" aria-pressed="${filter===k}" title="${esc(k==='starred'?'Starred':k)}">${esc(l)}</button>`).join('');
 }
 chipsEl.addEventListener('click', e=>{ const b=e.target.closest('.chip'); if(!b) return; filter=b.dataset.f; renderChips(); saveDrill(); resetOrder(); render(); });
-const STUDY=['learn','quizzes','roll'], INFO=['guide','facts','log'], TASKS=['tasks','sigs','dash'];
+const STUDY=['learn','quizzes','roll'], INFO=['guide','facts','ideas','log'], TASKS=['tasks','sigs','dash'];
 let lastStudy='learn', lastInfo='guide', lastTasks='tasks'; try{ const v=JSON.parse(localStorage.getItem('bn-sub')||'{}'); if(STUDY.includes(v.s)) lastStudy=v.s; if(INFO.includes(v.i)) lastInfo=v.i; if(TASKS.includes(v.t)) lastTasks=v.t; }catch(e){}
 const tabOf = m => STUDY.includes(m)?'study':INFO.includes(m)?'info':TASKS.includes(m)?'tasks':m;
 function setMode(m){
@@ -636,6 +636,26 @@ function renderFacts(){
   factsEl.querySelectorAll('[data-e]').forEach(b=>b.onclick=()=>{ const i=+b.dataset.e, f=S.facts[i]; const q=prompt('Question',f.q); if(q===null) return; const a=prompt('Answer',f.a); if(a===null) return; if(q===f.q&&a===f.a) return; commit({who:me,at:when(),card:'DSP facts',changes:[{field:q,from:f.a,to:a}]},st=>{st.facts[i]={q,a};}).then(ok=>{ if(ok) renderFacts(); }); });
 }
 
+// ---------- suggestions: anyone posts an idea for the site; the PCP marks it done ----------
+const ideasEl=document.getElementById('ideas');
+let ideaDraft='', ideasDoneOpen=false;
+function renderIdeas(){
+  const L=S.suggestions||[], open=L.filter(x=>!x.done), done=L.filter(x=>x.done), pcp=isPCP();
+  const row=x=>`<li data-k="${esc(x._k)}"><span>${esc(x.text)} <small class="status">· ${esc(first(x.who||''))}, ${esc(fmt(x.at))}</small></span><span class="iact">${pcp&&!x.done?'<button class="small" data-idone>Done</button>':''}${pcp||x.who===me?'<button class="x" data-idel aria-label="Remove">×</button>':''}</span></li>`;
+  ideasEl.innerHTML=`<div class="editor" style="margin-top:12px"><h2>Suggestions</h2>
+    <div class="field"><textarea id="itext" rows="3" placeholder="Something confusing, missing or annoying on the site? Say it here.">${esc(ideaDraft)}</textarea></div>
+    <div class="ctrl"><button class="btn primary" id="isend">Send</button></div></div>
+    ${open.length?`<ul class="goals ideas">${open.map(row).join('')}</ul>`:'<div class="status" style="margin-top:10px">No open suggestions.</div>'}
+    ${done.length?`<details class="ogd" ${ideasDoneOpen?'open':''}><summary><h3 class="sec">Done <small>${done.length}</small></h3></summary><ul class="goals ideas">${done.map(row).join('')}</ul></details>`:''}`;
+  const t=ideasEl.querySelector('#itext'); t.oninput=()=>{ ideaDraft=t.value; };
+  const dd=ideasEl.querySelector('details'); if(dd) dd.ontoggle=()=>{ ideasDoneOpen=dd.open; };
+  ideasEl.querySelector('#isend').onclick=async e=>{ if(!me){ askName(); return; } const text=t.value.trim(); if(!text){ t.focus(); return; } e.target.disabled=true;
+    try{ await dbWrite('POST','suggestions',{who:me,text,at:when()}); ideaDraft=''; await refresh(); toast('Sent. Thanks!'); }catch(err){ toast('Send failed: '+(err.message||err)); e.target.disabled=false; return; } renderIdeas(); };
+  const K=b=>L.find(x=>x._k===b.closest('[data-k]').dataset.k);
+  ideasEl.querySelectorAll('[data-idone]').forEach(b=>b.onclick=async()=>{ const x=K(b); if(!x||!pcp) return; b.disabled=true; try{ await dbWrite('PATCH','suggestions/'+key(x._k),{done:when()}); await refresh(); }catch(e){ toast('Save failed'); } render(); });
+  ideasEl.querySelectorAll('[data-idel]').forEach(b=>b.onclick=async()=>{ const x=K(b); if(!x||!(pcp||x.who===me)) return; b.disabled=true; try{ await dbWrite('DELETE','suggestions/'+key(x._k)); await refresh(); }catch(e){ toast('Remove failed'); } render(); });
+}
+
 // ---------- log ----------
 const logEl=document.getElementById('log');
 function renderLog(){
@@ -943,18 +963,19 @@ function renderRollBoard(){
 }
 
 // ---------- error safety net ----------
-function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06x'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
+function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06y'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
   b.innerHTML='<span style="flex:1;word-break:break-word">Something broke: '+esc(msg)+'</span><button onclick="location.reload()" style="border:0;background:#fff;color:#B23A3A;border-radius:8px;padding:6px 10px;font:600 13px \'Public Sans\',sans-serif;cursor:pointer">Reload</button><button onclick="document.getElementById(\'errbar\').remove()" style="border:0;background:transparent;color:#fff;font-size:18px;cursor:pointer">×</button>'; }
 window.addEventListener('error', e=>{ showErr((e.message||'error')+' @'+(e.lineno||'?')); try{ render(); }catch(x){} });
 window.addEventListener('unhandledrejection', e=>{ showErr('async: '+((e.reason&&e.reason.message)||e.reason||'error')); });
 
 // ---------- render ----------
 function render(){
-  if(!['today','learn','roll','quizzes','tasks','sigs','dash','guide','facts','acct','log'].includes(mode)) mode='today';
+  if(!['today','learn','roll','quizzes','tasks','sigs','dash','guide','facts','ideas','acct','log'].includes(mode)) mode='today';
   const showChips = mode==='learn';
   chipsEl.hidden=!showChips;
-  for(const id of ['today','learn','roll','quizzes','tasks','sigs','dash','guide','facts','acct','log']) document.getElementById(id).hidden = mode!==id;
+  for(const id of ['today','learn','roll','quizzes','tasks','sigs','dash','guide','facts','ideas','acct','log']) document.getElementById(id).hidden = mode!==id;
   if(mode==='dash'&&!isPCP()){ mode='tasks'; lastTasks='tasks'; }
+  const sg=document.querySelector('#infosub [data-m=ideas]'), openIdeas=(S.suggestions||[]).filter(x=>!x.done).length; sg.textContent='Suggestions'+(isPCP()&&openIdeas?` (${openIdeas})`:'');
   const db=document.querySelector('#tasksub [data-m=dash]'); db.hidden=!isPCP(); db.textContent='Dashboard'+(isPCP()&&(S.pending||[]).length?` (${S.pending.length})`:'');
   const tab=tabOf(mode);
   document.querySelectorAll('[role=tab]').forEach(t=>t.setAttribute('aria-selected', t.dataset.tab===tab));
@@ -971,7 +992,8 @@ function render(){
   else if(mode==='facts') renderFacts();
   else if(mode==='guide') renderGuide();
   else if(mode==='log') renderLog();
+  else if(mode==='ideas') renderIdeas();
 }
 renderWho(); setStatus('Loading…');
 Promise.all([loadPhotos(),refresh()]).then(()=>{ renderChips(); resetOrder(); render(); if(!me) setTimeout(askName, 300); loadSheets().then(()=>{ if(['today','acct','sigs'].includes(mode)) render(); }); });
-setInterval(()=>{ const ae=document.activeElement, typing=ae&&(ae.tagName==='TEXTAREA'||(ae.tagName==='INPUT'&&ae.type!=='checkbox')); if(document.visibilityState==='visible' && !typing && !tEdit && !editing && !dirEdit && mode!=='learn' && mode!=='quiz') refresh().then(()=>{ order=order.map(c=>S.cards.find(x=>x.photo===c.photo)||c); if(['today','tasks','sigs','dash','acct','log','facts','guide'].includes(mode)) render(); }); loadSheets(); }, 30000);
+setInterval(()=>{ const ae=document.activeElement, typing=ae&&(ae.tagName==='TEXTAREA'||(ae.tagName==='INPUT'&&ae.type!=='checkbox')); if(document.visibilityState==='visible' && !typing && !tEdit && !editing && !dirEdit && mode!=='learn' && mode!=='quiz') refresh().then(()=>{ order=order.map(c=>S.cards.find(x=>x.photo===c.photo)||c); if(['today','tasks','sigs','dash','acct','log','facts','guide','ideas'].includes(mode)) render(); }); loadSheets(); }, 30000);
