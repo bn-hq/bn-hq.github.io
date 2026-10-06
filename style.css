@@ -200,3 +200,8 @@ header small{color:var(--ink2);font-size:12px;text-transform:uppercase;letter-sp
 .pod small{color:var(--ink2);font-size:12px}
 .pod .pts{font:800 22px "Bricolage Grotesque",sans-serif;font-variant-numeric:tabular-nums}
 .sigr .nxl{flex:none;min-height:44px;white-space:nowrap}
+.ongo{margin:14px 0 0;font:600 12px "Public Sans",sans-serif;text-transform:uppercase;letter-spacing:.06em;color:var(--ink2)}
+.ogd summary{cursor:pointer;list-style:none;min-height:44px}
+.ogd summary::-webkit-details-marker{display:none}
+.ogd summary .sec::after{content:" ▸";color:var(--ink2);font-size:14px}
+.ogd[open] summary .sec::after{content:" ▾"}

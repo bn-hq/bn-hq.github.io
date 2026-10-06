@@ -417,8 +417,10 @@ function renderSigs(){
 const tasksEl=document.getElementById('tasks');
 const WDAYS=['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
 const dow = iso => new Date(iso+'T12:00:00').getDay();
-const dueText = iso => { if(!iso) return ''; const t=today(); if(iso===t) return 'Today'; if(iso===addDays(t,1)) return 'Tomorrow'; return new Date(iso+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}).replace(',',''); };
+const dueText = iso => { if(!iso) return 'Ongoing'; const t=today(); if(iso===t) return 'Today'; if(iso===addDays(t,1)) return 'Tomorrow'; return new Date(iso+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}).replace(',',''); };
 const first = n => String(n).split(' ')[0];
+const PCP = () => ((SEED.roster||[]).find(r=>/(^|pledge class )president\b/i.test(r.role||''))||{}).name||'';
+const isPCP = () => !!me && me===PCP();
 const whoText = who => who&&who.length ? who.map(n=>`#${PNUM(n)} ${first(n)}`).join(', ') : 'Whole class';
 function atWho(t){
   t=t.toLowerCase().replace(/[^a-z0-9-]/g,''); const R=SEED.roster||[];
@@ -441,10 +443,10 @@ function parseTask(line, base){
   base=base||today(); const who=[], bad=[], rest=[];
   for(const w of String(line).replace(/^\s*([-*•]|\d+[.)])\s+/,'').trim().split(/\s+/)){ if(/^@\S+/.test(w)){ const n=atWho(w.slice(1)); if(n){ if(!who.includes(n)) who.push(n); } else bad.push(w); } else if(w) rest.push(w); }
   const d=parseDue(rest, base); if(d) rest.splice(rest.length-d.n);
-  return {title:rest.join(' '), who, due:d?d.due:addDays(base,1), bad};
+  return {title:rest.join(' '), who, due:d?d.due:'', bad};
 }
-const previewText = p => p.bad.length ? `Unknown: ${p.bad.join(' ')} (use @number, @first name or @me)` : `For: ${whoText(p.who)} · Due ${dueText(p.due)}`;
-const newTask = p => Object.assign({id:uid(),title:p.title,due:p.due,notes:'',by:me,at:when(),done:{}}, p.who.length?{who:p.who}:{});
+const previewText = p => p.bad.length ? `Unknown: ${p.bad.join(' ')} (use @number, @first name or @me)` : `For: ${whoText(p.who)} · ${p.due?'Due '+dueText(p.due):'Ongoing'}`;
+const newTask = p => Object.assign({id:uid(),title:p.title,notes:'',by:me,at:when(),done:{}}, p.due?{due:p.due}:{}, p.who.length?{who:p.who}:{});
 async function addTasks(ps){
   const ok=await commit({who:me,at:when(),card:'Tasks',changes:ps.map(p=>({field:'Added task',from:'',to:p.title+' ('+whoText(p.who)+', due '+p.due+')'}))}, st=>{ for(const p of ps) st.tasks.push(newTask(p)); });
   if(ok){ tDraft=''; render(); } return ok;
@@ -462,7 +464,7 @@ function taskHtml(t){
     <div class="field"><label>Who</label><div class="chips" style="margin-top:0"><button class="chip" data-ew="" aria-pressed="${!tWho.length}">Whole class</button>${(SEED.roster||[]).map(r=>`<button class="chip" data-ew="${esc(r.name)}" aria-pressed="${tWho.includes(r.name)}">#${r.n} ${esc(first(r.name))}</button>`).join('')}</div></div>
     <div class="field"><label>Notes</label><textarea id="en">${esc(t.notes||'')}</textarea></div>
     <div class="ctrl"><button class="btn" id="ecancel">Cancel</button><button class="btn primary" id="esave">Save</button></div></div>`;
-  return `<div class="task ${(mine?meDone:n>=as.length)?'done':''}" data-id="${esc(t.id)}"><div class="t">${mine?`<label class="ck"><input type="checkbox" data-tog ${meDone?'checked':''} aria-label="Mark done"></label>`:''}<button class="ttl" data-edit>${esc(t.title)}</button><button class="x" data-del aria-label="Delete task">×</button></div>
+  return `<div class="task ${(mine?meDone:n>=as.length)?'done':''}" data-id="${esc(t.id)}"><div class="t">${mine?`<label class="ck"><input type="checkbox" data-tog ${meDone?'checked':''} aria-label="Mark done"></label>`:''}<button class="ttl" data-edit>${esc(t.title)}</button>${isPCP()?'<button class="x" data-del aria-label="Delete task">×</button>':''}</div>
     ${t.notes?`<div class="notes">${esc(t.notes)}</div>`:''}
     <div class="bar"><i style="width:${Math.round(100*n/as.length)}%"></i></div>
     <div class="meta"><span class="due ${late?'late':''}">${late?'Overdue · ':'Due '}${esc(dueText(t.due))}</span><button class="small" data-show aria-label="Who's done">${n}/${as.length} done · ${esc(whoText(t.who))} ▾</button></div>
@@ -474,7 +476,7 @@ function bindTasks(el, rerender){
     await commit({who:me,at:when(),card:'Tasks',changes:[{field:t.title,from:was?'done':'not done',to:was?'not done':'done'}]},st=>{ const x=st.tasks.find(y=>y.id===t.id); x.done=x.done||{}; if(was) delete x.done[me]; else x.done[me]=when(); }); rerender(); });
   el.querySelectorAll('[data-show]').forEach(b=>b.onclick=()=>{ const w=b.closest('.task').querySelector('[data-who]'); w.hidden=!w.hidden; });
   el.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>{ const t=T(idOf(b)); tEdit=t.id; tWho=(t.who||[]).slice(); rerender(); const i=el.querySelector('#et'); if(i){ i.focus(); i.setSelectionRange(i.value.length,i.value.length); } });
-  el.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{ const t=T(idOf(b)), keep=Object.assign({},t); delete keep._k;
+  el.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{ if(!isPCP()){ toast('Only the PCP can remove tasks.'); return; } const t=T(idOf(b)), keep=Object.assign({},t); delete keep._k;
     const ok=await commit({who:me,at:when(),card:'Tasks',changes:[{field:'Deleted task',from:t.title,to:''}]},st=>{ st.tasks=st.tasks.filter(x=>x.id!==t.id); }); rerender();
     if(ok) undoToast('Deleted "'+t.title+'"', async()=>{ await commit({who:me,at:when(),card:'Tasks',changes:[{field:'Restored task',from:'',to:t.title}]},st=>{ st.tasks.push(keep); }); rerender(); }); });
   const ed=el.querySelector('[data-id] #et'); if(!ed) return;
@@ -484,7 +486,7 @@ function bindTasks(el, rerender){
     const who=(SEED.roster||[]).map(r=>r.name).filter(n=>tWho.includes(n)), ch=[];
     if(title!==t.title) ch.push({field:'Task',from:t.title,to:title}); if(due!==(t.due||'')) ch.push({field:t.title+' · due',from:t.due||'',to:due}); if(notes!==(t.notes||'')) ch.push({field:t.title+' · notes',from:t.notes||'',to:notes});
     if(whoText(who)!==whoText(t.who)) ch.push({field:t.title+' · who',from:whoText(t.who),to:whoText(who)});
-    if(ch.length){ const ok=await commit({who:me,at:when(),card:'Tasks',changes:ch},st=>{ const x=st.tasks.find(y=>y.id===t.id); Object.assign(x,{title,due,notes}); if(who.length) x.who=who; else delete x.who; }); if(!ok) return; }
+    if(ch.length){ const ok=await commit({who:me,at:when(),card:'Tasks',changes:ch},st=>{ const x=st.tasks.find(y=>y.id===t.id); Object.assign(x,{title,notes}); if(due) x.due=due; else delete x.due; if(who.length) x.who=who; else delete x.who; }); if(!ok) return; }
     tEdit=null; rerender(); };
   el.querySelector('#esave').onclick=save; el.querySelector('#ecancel').onclick=()=>{ tEdit=null; rerender(); };
   ed.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); save(); } if(e.key==='Escape'){ tEdit=null; rerender(); } };
@@ -492,9 +494,9 @@ function bindTasks(el, rerender){
 function renderTasks(){
   const byDue=(a,b)=>(a.due||'9999')<(b.due||'9999')?-1:(a.due||'9999')>(b.due||'9999')?1:0;
   const L=S.tasks.slice().sort(byDue), mine=L.filter(t=>me&&(t.who||[]).includes(me)), all=L.filter(t=>!(t.who||[]).length), other=L.filter(t=>(t.who||[]).length&&!(t.who||[]).includes(me));
-  const sec=(h,ts,empty)=>ts.length||empty?`<h3 class="sec">${h} <small>${ts.length}</small></h3>${ts.map(taskHtml).join('')||`<div class="reveal">${empty}</div>`}`:'';
+  const sec=(h,ts,empty)=>{ const dated=ts.filter(t=>t.due), og=ts.filter(t=>!t.due); return ts.length||empty?`<h3 class="sec">${h} <small>${ts.length}</small></h3>${dated.map(taskHtml).join('')}${og.length?`<div class="ongo">Ongoing <small>${og.length}</small></div>${og.map(taskHtml).join('')}`:''}${ts.length?'':`<div class="reveal">${empty}</div>`}`:''; };
   const focused=document.activeElement&&document.activeElement.id==='tq';
-  tasksEl.innerHTML=`<div class="field" style="margin-top:14px"><input id="tq" placeholder="Add a task…" autocomplete="off" enterkeyhint="done" value="${esc(tDraft)}"><div class="status" id="tprev">${tDraft.trim()?esc(previewText(parseTask(tDraft))):'@4 or @Tim to assign · fri, 10/12, in 3 days to set a due date · Enter to add'}</div></div>
+  tasksEl.innerHTML=`<div class="field" style="margin-top:14px"><input id="tq" placeholder="Add a task…" autocomplete="off" enterkeyhint="done" value="${esc(tDraft)}"><div class="status" id="tprev">${tDraft.trim()?esc(previewText(parseTask(tDraft))):'@4 or @Tim to assign · fri, 10/12, in 3 days to set a due date (none = ongoing) · Enter to add'}</div></div>
     ${sec('Mine',mine,'Nothing assigned just to you.')}${sec('Whole class',all,'No class tasks yet.')}${sec('Assigned to others',other)}`;
   const q=tasksEl.querySelector('#tq'), pv=tasksEl.querySelector('#tprev');
   if(focused){ q.focus(); q.setSelectionRange(q.value.length,q.value.length); }
@@ -582,30 +584,27 @@ function renderLog(){
 
 // ---------- today ----------
 const todayEl=document.getElementById('today');
+let ongoingOpen=false;
 const weekStart = iso => addDays(iso, -((dow(iso)+6)%7));
-const nextMeeting = iso => addDays(iso, (7-dow(iso))%7);
-const daysBetween = (a,b) => Math.round((new Date(b+'T12:00:00')-new Date(a+'T12:00:00'))/864e5);
 const doneDay = (t,n) => { const x=(t.done||{})[n]; return x?isoDay(x):null; };
 function planFor(n, base){
-  // day-by-day plan computed from tasks: dated on their date, overdue under catch up, undated spread to the next meeting (max 3/day)
-  base=base||today(); const days={}, catchup=[], undated=[], put=(d,t)=>(days[d]=days[d]||[]).push(t);
+  // day-by-day plan computed from tasks: dated on their date, overdue under catch up; undated tasks are ongoing and sit in their own list
+  base=base||today(); const days={}, catchup=[], ongoing=[], put=(d,t)=>(days[d]=days[d]||[]).push(t);
   for(const t of S.tasks.filter(t=>isFor(t,n))){ const dd=doneDay(t,n);
-    if(t.due){ if(t.due>=base) put(t.due,t); else if(!dd||dd===base) catchup.push(t); }
-    else if(dd){ if(dd>=base) put(dd,t); } else undated.push(t); }
-  const D=daysBetween(base,nextMeeting(base))+1, N=undated.length;
-  undated.sort((a,b)=>(a.at||'')<(b.at||'')?-1:1).forEach((t,i)=>put(addDays(base, N<=3*D?Math.floor(i*D/N):Math.floor(i/3)), t));
-  return {catchup, days:Object.keys(days).sort().map(d=>[d,days[d]])};
+    if(!t.due){ if(!dd||dd===base) ongoing.push(t); }
+    else if(t.due>=base) put(t.due,t); else if(!dd||dd===base) catchup.push(t); }
+  return {catchup, ongoing, days:Object.keys(days).sort().map(d=>[d,days[d]])};
 }
 function weekStats(names, base){
-  // this week (Mon-Sun): tasks still open and due by Sunday (or undated), plus anything finished this week
+  // this week (Mon-Sun): dated tasks still open and due by Sunday, plus dated ones finished this week; ongoing tasks don't count
   base=base||today(); const ws=weekStart(base), we=addDays(ws,6); let tot=0, done=0;
-  for(const n of names) for(const t of S.tasks){ if(!isFor(t,n)) continue; const dd=doneDay(t,n); if(dd&&dd<ws) continue; if(!dd&&t.due&&t.due>we) continue; tot++; if(dd) done++; }
+  for(const n of names) for(const t of S.tasks){ if(!isFor(t,n)||!t.due) continue; const dd=doneDay(t,n); if(dd&&dd<ws) continue; if(!dd&&t.due>we) continue; tot++; if(dd) done++; }
   return {tot, done, pct: tot?Math.round(100*done/tot):null};
 }
 function streakFor(n, base){
   // consecutive days (back from today) where every task due that day was done by that day; days with nothing due are skipped
   base=base||today(); let s=0;
-  for(let i=0;i<90;i++){ const d=addDays(base,-i), planned=S.tasks.filter(t=>isFor(t,n)&&(t.due===d||(!t.due&&doneDay(t,n)===d))); if(!planned.length) continue;
+  for(let i=0;i<90;i++){ const d=addDays(base,-i), planned=S.tasks.filter(t=>isFor(t,n)&&t.due===d); if(!planned.length) continue;
     if(planned.every(t=>{ const dd=doneDay(t,n); return dd&&dd<=d; })) s++; else if(i) break; }
   return s;
 }
@@ -628,7 +627,9 @@ function renderToday(){
     ${(()=>{ const own=sigCards().filter(c=>sigOf(c).owner===me&&sigOf(c).status!=='signed').sort((a,b)=>SIG.indexOf(sigOf(b).status)-SIG.indexOf(sigOf(a).status)); return own.length?`<h3 class="sec">Sig tasks I own <small>${own.length}</small></h3>${own.map(c=>sigRow(c,true)).join('')}`:''; })()}
     ${plan.catchup.length?`<h3 class="sec">Catch up <small>${plan.catchup.filter(t=>isDone(t,me)).length} of ${plan.catchup.length} done</small></h3>${plan.catchup.map(t=>checkRow(t,me,true)).join('')}`:''}
     ${plan.days.length?plan.days.map(([d,ts])=>`<h3 class="sec">${esc(dayName(d))}</h3><div class="status" style="margin:0 0 2px">${goal(d,ts)}</div>${ts.map(t=>checkRow(t,me,false)).join('')}`).join('')
-      :plan.catchup.length?'':`<div class="reveal" style="margin-top:14px;text-align:center"><div class="big">Nothing due 🎉</div><div class="ctrl"><button class="btn" id="tstudy">Go to Study</button></div></div>`}`;
+      :plan.catchup.length?'':`<div class="reveal" style="margin-top:14px;text-align:center"><div class="big">Nothing due 🎉</div><div class="ctrl"><button class="btn" id="tstudy">Go to Study</button></div></div>`}
+    ${plan.ongoing.length?`<details class="ogd" ${ongoingOpen?'open':''}><summary><h3 class="sec">Ongoing <small>${plan.ongoing.length}</small></h3></summary>${plan.ongoing.map(t=>checkRow(t,me,false)).join('')}</details>`:''}`;
+  const od=todayEl.querySelector('.ogd'); if(od) od.ontoggle=()=>{ ongoingOpen=od.open; };
   todayEl.querySelector('#tdrill').onclick=()=>{ filter='all'; renderChips(); setMode('quiz'); };
   const sb=todayEl.querySelector('#tstudy'); if(sb) sb.onclick=()=>setMode(lastStudy);
   bindTasks(todayEl, renderToday); bindSig(todayEl, renderToday);
@@ -685,7 +686,7 @@ function renderRollBoard(){
 }
 
 // ---------- error safety net ----------
-function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06b'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
+function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06c'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
   b.innerHTML='<span style="flex:1;word-break:break-word">Something broke: '+esc(msg)+'</span><button onclick="location.reload()" style="border:0;background:#fff;color:#B23A3A;border-radius:8px;padding:6px 10px;font:600 13px \'Public Sans\',sans-serif;cursor:pointer">Reload</button><button onclick="document.getElementById(\'errbar\').remove()" style="border:0;background:transparent;color:#fff;font-size:18px;cursor:pointer">×</button>'; }
 window.addEventListener('error', e=>{ showErr((e.message||'error')+' @'+(e.lineno||'?')); try{ render(); }catch(x){} });
 window.addEventListener('unhandledrejection', e=>{ showErr('async: '+((e.reason&&e.reason.message)||e.reason||'error')); });
