@@ -9,11 +9,11 @@ function fromDb(d){
   d=d||{};
   const cards=objToArr(d.cards,'order'); cards.forEach(c=>{ c.extra=c.extra||{}; });
   const byAtDesc=(a,b)=>(a.at<b.at?1:-1);
-  return { version:d.version||0, cards, log:objToArr(d.log).sort(byAtDesc), facts:objToArr(d.facts,'order'), tasks:objToArr(d.tasks).sort((a,b)=>(a.due||'9999')<(b.due||'9999')?-1:1), recitals:objToArr(d.recitals).sort(byAtDesc), guide:objToArr(d.guide,'order'), passages: d.passages? objToArr(d.passages,'order') : SEED.passages, drill:d.drill||{} };
+  return { version:d.version||0, cards, log:objToArr(d.log).sort(byAtDesc), facts:objToArr(d.facts,'order'), tasks:objToArr(d.tasks).sort((a,b)=>(a.due||'9999')<(b.due||'9999')?-1:1), recitals:objToArr(d.recitals).sort(byAtDesc), guide:objToArr(d.guide,'order'), passages: d.passages? objToArr(d.passages,'order') : SEED.passages, drill:d.drill||{}, informals:d.informals||null, exams:d.exams||{} };
 }
 async function dbGet(path){ const r=await fetch(DB+'/'+path+'.json',{cache:'no-store'}); if(!r.ok) throw new Error('read '+r.status); return r.json(); }
 async function dbWrite(method,path,body){ const r=await fetch(DB+'/'+path+'.json',{method,body:body===undefined?undefined:JSON.stringify(body)}); if(!r.ok) throw new Error('write '+r.status); return r.json(); }
-const KEYS=['version','cards','log','facts','tasks','recitals','passages','drill','guide'];
+const KEYS=['version','cards','log','facts','tasks','recitals','passages','drill','guide','informals','exams'];
 async function loadPhotos(){
   if(Object.keys(URIS).length) return;
   try{ const c=localStorage.getItem('bn-photos'); if(c){ URIS=JSON.parse(c); if(Object.keys(URIS).length) { checkPhotoVersion(); return; } } }catch(e){}
@@ -279,7 +279,6 @@ gridEl.addEventListener('click', e=>{ const t=e.target.closest('.tile'); if(!t) 
 // ---------- Google Sheets (read-only, client-side) ----------
 // Each sheet must be shared "anyone with the link can view", or swap src for its File > Share > Publish to web > CSV link.
 const SHEETS={
-  informals:{src:'https://docs.google.com/spreadsheets/d/1h-uOc2AbkqIXKYO97PXCK_YDFJP0Cbsbpe66cgKpUAs/gviz/tq?tqx=out:csv&sheet=Signups&range=E5:O44&headers=0', name:'Informals Tracker'},
   sigs:{src:'https://docs.google.com/spreadsheets/d/1cMJ35jVmLAj84479Zo0r64K3AMh0KpQaeyrbZUI1bNk/gviz/tq?tqx=out:csv', name:'Signature Tasks Tracker'}};
 const INFORMALS={target:25, targets:{'Ali-Anass Mazouzi':30}, by:'2026-10-11'};
 const SH={};
@@ -293,17 +292,23 @@ async function loadSheet(k){
 const loadSheets = () => Promise.all(Object.keys(SHEETS).map(loadSheet));
 const sheetNote = k => SH[k]&&SH[k].err ? `Couldn't read the ${SHEETS[k].name} (${esc(SH[k].err)}). In the sheet: Share → anyone with the link can view, or File → Share → Publish to web → CSV, then put that link in SHEETS.${k}.src in app.js.` : !SH[k] ? 'Loading the '+SHEETS[k].name+'…' : '';
 function informals(){
-  // columns E-O are pledges 1-11, rows 5-44 the 40 brothers; cells are Emailed / Confirmed / Done
-  const x=SH.informals; if(!x||!x.rows) return null; let rows=x.rows; if(rows.some(r=>r.length>=15)) rows=rows.slice(4,44).map(r=>r.slice(4,15));
-  const out={}; for(const r of SEED.roster||[]){ const c={done:0,confirmed:0,emailed:0}; for(const row of rows){ const v=String(row[r.n-1]||'').trim().toLowerCase(); if(v in c) c[v]++; } c.target=INFORMALS.targets[r.name]||INFORMALS.target; out[r.name]=c; }
+  // per-pledge counts synced nightly from the Informals Tracker into Firebase `informals` (no brother names or emails)
+  const x=S.informals; if(!x||!x.counts) return null; const out={};
+  for(const n of PC()){ const c=x.counts[key(n)]||x.counts[n]||{}; out[n]={done:+c.done||0, confirmed:+c.confirmed||0, emailed:+c.emailed||0, target:INFORMALS.targets[n]||INFORMALS.target}; }
   return out;
 }
+const examOn = (n, iso) => { const x=(S.exams||{})[key(n)]||(S.exams||{})[n]; return (Array.isArray(x)?x:Object.values(x||{})).filter(e=>e&&e.date===iso); };
+function examsTomorrowHtml(){
+  if(!isPCP()||!S.exams||!Object.keys(S.exams).length) return ''; const d=addDays(today(),1), rows=PC().flatMap(n=>examOn(n,d).map(e=>[n,e]));
+  return `<div class="editor"><h2>Exams tomorrow</h2>${rows.length?`<ul class="goals">${rows.map(([n,e])=>`<li><span>${esc(first(n))} · ${esc(e.course||'Exam')}</span><b>${esc(e.time||'')}</b></li>`).join('')}</ul>`:'<div class="status">Nobody has an exam tomorrow.</div>'}</div>`;
+}
+const informalsUpdated = () => S.informals&&S.informals.updatedAt ? 'Updated '+fmt(S.informals.updatedAt) : '';
 function informalsHtml(){
   const I=informals();
-  if(!I) return `<div class="editor" style="margin-top:12px"><h2>Informals</h2><div class="status">${sheetNote('informals')}</div></div>`;
+  if(!I) return `<div class="editor" style="margin-top:12px"><h2>Informals</h2><div class="status">Counts sync from the Informals Tracker every night at 10 PM. Not synced yet.</div></div>`;
   const rows=PC().map(n=>[n,I[n]]), hit=rows.filter(([,c])=>c.done>=c.target).length;
   return `<div class="editor" style="margin-top:12px"><h2>Informals · ${esc(dueText(INFORMALS.by))}</h2>
-    <div class="status">From the ${SHEETS.informals.name} (Signups). At target: <b>${hit} of ${rows.length}</b>. Target ${INFORMALS.target}${Object.entries(INFORMALS.targets).map(([n,v])=>`, ${esc(first(n))} ${v}`).join('')}.</div>
+    <div class="status">From the Informals Tracker · ${esc(informalsUpdated())}. At target: <b>${hit} of ${rows.length}</b>. Target ${INFORMALS.target}${Object.entries(INFORMALS.targets).map(([n,v])=>`, ${esc(first(n))} ${v}`).join('')}.</div>
     <div style="overflow-x:auto"><table class="lb"><tr><th>Pledge</th><th class="n">Done</th><th class="n">Confirmed</th><th class="n">Emailed</th></tr>
     ${rows.map(([n,c])=>`<tr><td>${esc(first(n))}${n===me?' <b>(you)</b>':''}</td><td class="n${c.done>=c.target?' hit':''}">${c.done}/${c.target}</td><td class="n">${c.confirmed}</td><td class="n">${c.emailed}</td></tr>`).join('')}</table></div></div>`;
 }
@@ -386,6 +391,7 @@ const whoText = who => who&&who.length ? who.map(n=>`#${PNUM(n)} ${first(n)}`).j
 function atWho(t){
   t=t.toLowerCase().replace(/[^a-z0-9-]/g,''); const R=SEED.roster||[];
   if(t==='me') return me||null;
+  if(t==='all') return '*';
   if(/^\d+$/.test(t)){ const r=R.find(x=>x.n===+t); return r?r.name:null; }
   const hits=R.filter(x=>x.name.toLowerCase().split(' ')[0].startsWith(t)); return t&&hits.length===1?hits[0].name:null;
 }
@@ -400,14 +406,28 @@ function parseDue(ws, base){
   if(r && k>r.n && L[k-r.n-1]==='due') r.n++;
   return r;
 }
-function parseTask(line, base){
-  base=base||today(); const who=[], bad=[], rest=[];
-  for(const w of String(line).replace(/^\s*([-*•]|\d+[.)])\s+/,'').trim().split(/\s+/)){ if(/^@\S+/.test(w)){ const n=atWho(w.slice(1)); if(n){ if(!who.includes(n)) who.push(n); } else bad.push(w); } else if(w) rest.push(w); }
-  const d=parseDue(rest, base); if(d) rest.splice(rest.length-d.n);
-  return {title:rest.join(' '), who, due:d?d.due:'', bad};
+function parseTime(ws){
+  // reads "7am", "8:30pm", "7 pm", "noon" or "at 7" off the end of ws; no am/pm: 1-7 and 12 are PM, 8-11 AM. Returns {time:'HH:MM', n} or null
+  const L=ws.map(w=>w.toLowerCase().replace(/[.,!]+$/,'')), k=L.length; if(!k) return null; let m, n=1;
+  if(L[k-1]==='noon') m=['','12','00','pm'];
+  else if(k>=2&&/^(am|pm)$/.test(L[k-1])&&/^\d{1,2}(:\d{2})?$/.test(L[k-2])){ m=(L[k-2]+L[k-1]).match(/^(\d{1,2})(?::(\d{2}))?(am|pm)$/); n=2; }
+  else m=L[k-1].match(/^(\d{1,2})(?::(\d{2}))?(am|pm)$/);
+  if(!m&&k>=2&&L[k-2]==='at') { m=L[k-1].match(/^(\d{1,2})(?::(\d{2}))?()$/); }
+  if(!m) return null; let h=+m[1], mi=+(m[2]||0); if(h<1||h>12||mi>59) return null;
+  const ap=m[3]||(h===12||h<=7?'pm':'am'); if(ap==='pm'&&h<12) h+=12; if(ap==='am'&&h===12) h=0;
+  if(k>n&&(L[k-n-1]==='at'||L[k-n-1]==='by')) n++;
+  return {time:String(h).padStart(2,'0')+':'+String(mi).padStart(2,'0'), n};
 }
-const previewText = p => p.bad.length ? `Unknown: ${p.bad.join(' ')} (use @number, @first name or @me)` : `For: ${whoText(p.who)} · ${p.due?'Due '+dueText(p.due):'Ongoing'}`;
-const newTask = p => Object.assign({id:uid(),title:p.title,notes:'',by:me,at:when(),done:{}}, p.due?{due:p.due}:{}, p.who.length?{who:p.who}:{});
+const timeText = t => { if(!t) return ''; let [h,m]=t.split(':').map(Number); const ap=h>=12?'pm':'am'; h=h%12||12; return h+(m?':'+String(m).padStart(2,'0'):'')+ap; };
+function parseTask(line, base){
+  base=base||today(); const who=[], bad=[], rest=[]; let all=false;
+  for(const w of String(line).replace(/^\s*([-*•]|\d+[.)])\s+/,'').trim().split(/\s+/)){ if(/^@\S+/.test(w)){ const n=atWho(w.slice(1)); if(n==='*') all=true; else if(n){ if(!who.includes(n)) who.push(n); } else bad.push(w); } else if(w) rest.push(w); }
+  const d=parseDue(rest, base); if(d) rest.splice(rest.length-d.n);
+  const tm=parseTime(rest); if(tm) rest.splice(rest.length-tm.n);
+  return {title:rest.join(' '), who:all?[]:who, all, due:d?d.due:'', time:tm?tm.time:'', bad};
+}
+const previewText = p => p.bad.length ? `Unknown: ${p.bad.join(' ')} (use @number, @first name or @me)` : `For: ${whoText(p.who)} · ${p.due?'Due '+dueText(p.due):'Ongoing'}${p.time?', '+timeText(p.time):''}`;
+const newTask = p => Object.assign({id:uid(),title:p.title,notes:'',by:me,at:when(),done:{}}, p.due?{due:p.due}:{}, p.time?{time:p.time}:{}, p.who.length?{who:p.who}:{});
 async function addTasks(ps){
   if(!isPCP()){ toast('Only the PCP can add tasks.'); return false; }
   const ok=await commit({who:me,at:when(),card:'Tasks',changes:ps.map(p=>({field:'Added task',from:'',to:p.title+' ('+whoText(p.who)+', due '+p.due+')'}))}, st=>{ for(const p of ps) st.tasks.push(newTask(p)); });
@@ -423,7 +443,7 @@ function taskHtml(t){
   const v=tView||me, as=t.who&&t.who.length?t.who:PC(), n=as.filter(x=>isDone(t,x)).length, mine=!!v&&isFor(t,v), meDone=isDone(t,v), all=n>=as.length, ro=v!==me;
   const late=t.due&&t.due<today()&&(mine?!meDone:!all);
   if(tEdit===t.id) return `<div class="task" data-id="${esc(t.id)}"><div class="field"><label>Task</label><input id="et" value="${esc(t.title)}"></div>
-    <div class="field"><label>Due</label><input id="ed" type="date" value="${esc(t.due||'')}"></div>
+    <div class="field"><label>Due</label><div class="row"><input id="ed" type="date" value="${esc(t.due||'')}"><input id="etm" type="time" value="${esc(t.time||'')}"></div></div>
     <div class="field"><label>Who</label><div class="chips" style="margin-top:0"><button class="chip" data-ew="" aria-pressed="${!tWho.length}">Whole class</button>${(SEED.roster||[]).map(r=>`<button class="chip" data-ew="${esc(r.name)}" aria-pressed="${tWho.includes(r.name)}">#${r.n} ${esc(first(r.name))}</button>`).join('')}</div></div>
     <div class="field"><label>Notes</label><textarea id="en">${esc(t.notes||'')}</textarea></div>
     <div class="ctrl"><button class="btn" id="ecancel">Cancel</button><button class="btn primary" id="esave">Save</button></div></div>`;
@@ -431,7 +451,7 @@ function taskHtml(t){
   return `<div class="task ${all?'done':''}" data-id="${esc(t.id)}"><div class="t">${mine?`<label class="ck"><input type="checkbox" data-tog ${meDone?'checked':''} ${ro?'disabled':''} aria-label="${ro?esc(first(v))+(meDone?' is done':' is not done'):'Mark done'}"></label>`:''}<button class="ttl" data-edit>${esc(t.title)}</button>${isPCP()?'<button class="x" data-del aria-label="Delete task">×</button>':''}</div>
     ${t.notes?`<div class="notes">${esc(t.notes)}</div>`:''}
     <div class="bar"><i style="width:${Math.round(100*n/as.length)}%"></i></div>
-    <div class="meta"><span class="due ${late?'late':''}">${late?'Overdue · ':t.due?'Due ':''}${esc(dueText(t.due))}${mine&&meDone&&!all?` · ${ro?esc(first(v))+' is':"you're"} done, open until everyone is`:''}</span><button class="small" data-show aria-label="Who's done">${n}/${as.length} done · ${esc(whoText(t.who))} ▾</button></div>
+    <div class="meta"><span class="due ${late?'late':''}">${late?'Overdue · ':t.due?'Due ':''}${esc(dueText(t.due))}${t.time?' · '+timeText(t.time):''}${mine&&t.due&&examOn(v,t.due).length?' · exam that day':''}${mine&&meDone&&!all?` · ${ro?esc(first(v))+' is':"you're"} done, open until everyone is`:''}</span><button class="small" data-show aria-label="Who's done">${n}/${as.length} done · ${esc(whoText(t.who))} ▾</button></div>
     ${isPCP()&&waiting.length&&!all?`<div class="notes">Waiting on: ${waiting.map(x=>esc(first(x))).join(', ')}</div>`:''}
     <div class="who" data-who hidden>${as.map(x=>`<span class="${isDone(t,x)?'':'no'}">${isDone(t,x)?'✓ ':''}${esc(first(x))}</span>`).join('')}</div></div>`;
 }
@@ -447,11 +467,11 @@ function bindTasks(el, rerender){
   const ed=el.querySelector('[data-id] #et'); if(!ed) return;
   el.querySelectorAll('[data-ew]').forEach(b=>b.onclick=()=>{ const n=b.dataset.ew; if(!n) tWho=[]; else tWho=tWho.includes(n)?tWho.filter(x=>x!==n):tWho.concat(n);
     el.querySelectorAll('[data-ew]').forEach(c=>c.setAttribute('aria-pressed', c.dataset.ew ? tWho.includes(c.dataset.ew) : !tWho.length)); });
-  const save=async()=>{ const t=T(tEdit); if(!t){ tEdit=null; rerender(); return; } const title=ed.value.trim(), due=el.querySelector('#ed').value, notes=el.querySelector('#en').value.trim(); if(!title){ ed.focus(); return; }
+  const save=async()=>{ const t=T(tEdit); if(!t){ tEdit=null; rerender(); return; } const title=ed.value.trim(), due=el.querySelector('#ed').value, time=el.querySelector('#etm').value, notes=el.querySelector('#en').value.trim(); if(!title){ ed.focus(); return; }
     const who=(SEED.roster||[]).map(r=>r.name).filter(n=>tWho.includes(n)), ch=[];
-    if(title!==t.title) ch.push({field:'Task',from:t.title,to:title}); if(due!==(t.due||'')) ch.push({field:t.title+' · due',from:t.due||'',to:due}); if(notes!==(t.notes||'')) ch.push({field:t.title+' · notes',from:t.notes||'',to:notes});
+    if(title!==t.title) ch.push({field:'Task',from:t.title,to:title}); if(due!==(t.due||'')) ch.push({field:t.title+' · due',from:t.due||'',to:due}); if(time!==(t.time||'')) ch.push({field:t.title+' · time',from:t.time||'',to:time}); if(notes!==(t.notes||'')) ch.push({field:t.title+' · notes',from:t.notes||'',to:notes});
     if(whoText(who)!==whoText(t.who)) ch.push({field:t.title+' · who',from:whoText(t.who),to:whoText(who)});
-    if(ch.length){ const ok=await commit({who:me,at:when(),card:'Tasks',changes:ch},st=>{ const x=st.tasks.find(y=>y.id===t.id); Object.assign(x,{title,notes}); if(due) x.due=due; else delete x.due; if(who.length) x.who=who; else delete x.who; }); if(!ok) return; }
+    if(ch.length){ const ok=await commit({who:me,at:when(),card:'Tasks',changes:ch},st=>{ const x=st.tasks.find(y=>y.id===t.id); Object.assign(x,{title,notes}); if(due) x.due=due; else delete x.due; if(time) x.time=time; else delete x.time; if(who.length) x.who=who; else delete x.who; }); if(!ok) return; }
     tEdit=null; rerender(); };
   el.querySelector('#esave').onclick=save; el.querySelector('#ecancel').onclick=()=>{ tEdit=null; rerender(); };
   ed.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); save(); } if(e.key==='Escape'){ tEdit=null; rerender(); } };
@@ -459,10 +479,10 @@ function bindTasks(el, rerender){
 function renderTasks(){
   // everyone sees their own board; the PCP can switch to anyone's board (or Everyone) and is the only one who can add
   const pcp=isPCP(), who=pcp?tBoard:me, fn=who?first(who):''; tView=who||me;
-  const byDue=(a,b)=>(a.due||'9999')<(b.due||'9999')?-1:(a.due||'9999')>(b.due||'9999')?1:0;
+  const byDue=(a,b)=>{ const x=(a.due||'9999')+(a.time||'99:99'), y=(b.due||'9999')+(b.time||'99:99'); return x<y?-1:x>y?1:0; };
   const L=S.tasks.slice().sort(byDue), all=L.filter(t=>!(t.who||[]).length);
   const sec=(h,ts,empty)=>{ const dated=ts.filter(t=>t.due), og=ts.filter(t=>!t.due); return ts.length||empty?`<h3 class="sec">${h} <small>${ts.length}</small></h3>${dated.map(taskHtml).join('')}${og.length?`<div class="ongo">Ongoing <small>${og.length}</small></div>${og.map(taskHtml).join('')}`:''}${ts.length?'':`<div class="reveal">${empty}</div>`}`:''; };
-  const target=p=>{ if(!p.who.length&&who&&!tAll) p.who=[who]; return p; };
+  const target=p=>{ if(!p.who.length&&!p.all&&who&&!tAll) p.who=[who]; return p; };
   const hint=`@4 or @Tim to assign (none = ${who&&!tAll?esc(fn):'whole class'}) · fri, 10/12, in 3 days to set a due date (none = ongoing) · Enter to add`;
   const focused=document.activeElement&&document.activeElement.id==='tq';
   const board = !me ? '<div class="reveal" style="margin-top:14px">Pick your name to see your tasks.</div>'
@@ -592,7 +612,7 @@ function planFor(n, base){
   for(const t of S.tasks.filter(t=>isFor(t,n))){ const dd=doneDay(t,n);
     if(!t.due){ if(!dd||dd===base) ongoing.push(t); }
     else if(t.due>=base) put(t.due,t); else if(!dd||dd===base) catchup.push(t); }
-  return {catchup, ongoing, days:Object.keys(days).sort().map(d=>[d,days[d]])};
+  return {catchup, ongoing, days:Object.keys(days).sort().map(d=>[d,days[d].sort((a,b)=>(a.time||'99:99')<(b.time||'99:99')?-1:1)])};
 }
 function weekStats(names, base){
   // this week (Mon-Sun): dated tasks still open and due by Sunday, plus dated ones finished this week; ongoing tasks don't count
@@ -608,9 +628,9 @@ function streakFor(n, base){
   return s;
 }
 const ring = pct => { const C=2*Math.PI*26, p=pct===null?0:pct; return `<svg class="ring" viewBox="0 0 64 64" width="64" height="64" aria-hidden="true"><circle cx="32" cy="32" r="26" fill="none" stroke="var(--line)" stroke-width="7"/>${p?`<circle cx="32" cy="32" r="26" fill="none" stroke="var(--ink)" stroke-width="7" stroke-linecap="round" stroke-dasharray="${(C*p/100).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 32 32)"/>`:''}<text x="32" y="37" text-anchor="middle" font-size="15" font-weight="700" fill="var(--ink)">${pct===null?'—':pct+'%'}</text></svg>`; };
-const checkRow = (t,n,late) => `<div class="task" data-id="${esc(t.id)}"><div class="t"><label class="ck"><input type="checkbox" data-tog ${isDone(t,n)?'checked':''} aria-label="Mark done"></label><span class="ttl">${esc(t.title)}</span><span class="due ${late?'late':''}">${esc(dueText(t.due))}</span></div></div>`;
+const checkRow = (t,n,late) => `<div class="task" data-id="${esc(t.id)}"><div class="t"><label class="ck"><input type="checkbox" data-tog ${isDone(t,n)?'checked':''} aria-label="Mark done"></label><span class="ttl">${esc(t.title)}</span><span class="due ${late?'late':''}">${esc(dueText(t.due))}${t.time?' · '+timeText(t.time):''}${t.due&&examOn(n,t.due).length?'<br>exam that day':''}</span></div></div>`;
 function renderToday(){
-  if(!me){ todayEl.innerHTML=`<div class="editor"><h2>Hi there</h2><div class="status">Pick your name to see your plan.</div><div class="ctrl"><button class="btn primary" id="tpick">Pick your name</button></div></div>`; todayEl.querySelector('#tpick').onclick=askName; return; }
+  if(!me){ todayEl.innerHTML=`<div class="editor"><h2>Hi there</h2><div class="status">Pick your name to see your plan.</div><div class="ctrl"><button class="btn primary" id="tpick">Pick your name</button></div></div>`+weeklyHtml(); todayEl.querySelector('#tpick').onclick=askName; return; }
   const t0=today(), t1=addDays(t0,1), plan=planFor(me,t0), wk=weekStats([me],t0), cls=weekStats(PC(),t0), st=streakFor(me,t0);
   const now=S.tasks.filter(t=>isFor(t,me)&&!isDone(t,me)&&t.due&&t.due<=t0).length;
   const solid=Object.values(S.drill[me]||{}).filter(x=>x.last==='ok'&&(x.streak||0)>=2).length;
@@ -620,6 +640,8 @@ function renderToday(){
   todayEl.innerHTML=`<h2 class="hi">Hi ${esc(first(me))}</h2><div class="status">${now?`${now} task${now===1?'':'s'} due today or overdue.`:'Nothing due today.'}</div>
     <div class="meter">${ring(wk.pct)}<div><b>This week</b><div class="status" style="margin:0">${wk.done} of ${wk.tot} done · resets Monday</div><div class="status" style="margin:2px 0 0">${st}-day streak</div></div></div>
     <div class="clsbar"><span>Whole class: ${cls.pct===null?'—':cls.pct+'%'} this week</span><div class="bar"><i style="width:${cls.pct||0}%"></i></div></div>
+    ${examsTomorrowHtml()}
+    ${weeklyHtml()}
     ${myMilestonesHtml()}
     <div class="editor"><h2>Your progress</h2><div class="status">Faces solid <b>${solid}/${S.cards.length}</b> · Rolls spelled 100% <b>${spell}/${ROLLS.length}</b></div>
       <div class="ctrl"><button class="btn primary" id="tdrill">Start drill</button></div></div>
@@ -632,6 +654,21 @@ function renderToday(){
   todayEl.querySelector('#tdrill').onclick=()=>{ filter='all'; renderChips(); setMode('quiz'); };
   const sb=todayEl.querySelector('#tstudy'); if(sb) sb.onclick=()=>setMode(lastStudy);
   bindTasks(todayEl, renderToday); bindSig(todayEl, renderToday);
+}
+
+function weeklyHtml(){
+  const I=informals(), t0=today(), pc=PC(), all=sigCards(), signed=all.filter(c=>sigOf(c).status==='signed').length;
+  const scale=I?Math.max(...pc.map(n=>Math.max(I[n].done,I[n].target))):1;
+  const bars=I?pc.map(n=>{ const c=I[n]; return `<div class="hb"><span class="hl">${esc(first(n))}</span><div class="ht"><i style="width:${(100*c.done/scale).toFixed(1)}%"></i><b style="left:${(100*c.target/scale).toFixed(1)}%" title="Target ${c.target}"></b></div><span class="hv${c.done>=c.target?' ok':''}">${c.done}/${c.target}</span></div>`; }).join('')
+    :'<div class="status">Informal counts sync from the tracker every night at 10 PM. Not synced yet.</div>';
+  const atInf=I?pc.filter(n=>I[n].done>=I[n].target).length:0, ms=MILESTONES.items.map(m=>[m, pc.filter(n=>{ const [a,b]=m.val(n); return b>0&&a>=b; }).length]);
+  const goals=[[`${INFORMALS.target} informals each (${Object.entries(INFORMALS.targets).map(([n,v])=>esc(first(n))+' '+v).join(', ')}) by ${mdy(INFORMALS.by)}`, I?`${atInf} of ${pc.length} there`:'not synced yet'],
+    [`${SIG_TARGET.pct}% of sig tasks signed by ${mdy(SIG_TARGET.by)}`, all.length?`${signed} of ${all.length} signed`:'none tracked yet']].concat(ms.map(([m,k])=>[`${m.label} by ${mdy(MILESTONES.by)}`, `${k} of ${pc.length} there`]));
+  const tk=pc.map(n=>[n,weekStats([n],t0)]);
+  return `<div class="editor weekly"><h2>Weekly progress</h2>
+    <h3 class="wh">Informals done ${I?`<small>${esc(informalsUpdated())} · line = target</small>`:''}</h3>${bars}
+    <h3 class="wh">This week's goals</h3><ul class="goals">${goals.map(([g,v])=>`<li><span>${g}</span><b>${esc(v)}</b></li>`).join('')}</ul>
+    <h3 class="wh">Tasks done this week</h3>${tk.map(([n,w])=>`<div class="hb"><span class="hl">${esc(first(n))}</span><div class="ht"><i style="width:${w.tot?(100*w.done/w.tot).toFixed(1):0}%"></i></div><span class="hv">${w.done} of ${w.tot}</span></div>`).join('')}</div>`;
 }
 
 // ---------- spell (roll call) ----------
@@ -685,7 +722,7 @@ function renderRollBoard(){
 }
 
 // ---------- error safety net ----------
-function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06g'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
+function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06h'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
   b.innerHTML='<span style="flex:1;word-break:break-word">Something broke: '+esc(msg)+'</span><button onclick="location.reload()" style="border:0;background:#fff;color:#B23A3A;border-radius:8px;padding:6px 10px;font:600 13px \'Public Sans\',sans-serif;cursor:pointer">Reload</button><button onclick="document.getElementById(\'errbar\').remove()" style="border:0;background:transparent;color:#fff;font-size:18px;cursor:pointer">×</button>'; }
 window.addEventListener('error', e=>{ showErr((e.message||'error')+' @'+(e.lineno||'?')); try{ render(); }catch(x){} });
 window.addEventListener('unhandledrejection', e=>{ showErr('async: '+((e.reason&&e.reason.message)||e.reason||'error')); });
