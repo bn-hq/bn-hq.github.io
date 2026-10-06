@@ -27,11 +27,10 @@ header small{color:var(--ink2);font-size:12px;text-transform:uppercase;letter-sp
 .who b{color:var(--ink)}
 .who button{border:0;background:none;color:var(--purple);font:600 12px "Public Sans",sans-serif;cursor:pointer;padding:0;text-decoration:underline}
 .tabs{display:flex;flex-wrap:wrap;gap:4px;margin-top:12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:4px}
-.tabs button{flex:1 1 calc(25% - 4px);min-width:0;border:0;background:transparent;color:var(--ink2);font:600 13px "Public Sans",sans-serif;padding:10px 4px;border-radius:9px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-@media (min-width:600px){.tabs button{flex:1 1 auto}}
+.tabs button{flex:1 1 0;min-width:0;min-height:44px;border:0;background:transparent;color:var(--ink2);font:600 13px "Public Sans",sans-serif;padding:10px 4px;border-radius:9px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tabs button[aria-selected="true"]{background:var(--purple);color:#fff}
 .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
-.chip{border:1px solid var(--line);background:var(--panel);color:var(--ink2);border-radius:999px;padding:5px 11px;font:600 12px "Public Sans",sans-serif;cursor:pointer}
+.chip{min-height:44px;border:1px solid var(--line);background:var(--panel);color:var(--ink2);border-radius:999px;padding:5px 11px;font:600 12px "Public Sans",sans-serif;cursor:pointer}
 .chip[aria-pressed="true"]{border-color:var(--gold);background:var(--gold2);color:var(--ink)}
 .count{color:var(--ink2);font-size:12px;margin-top:10px;font-variant-numeric:tabular-nums}
 .stage{margin-top:14px}
@@ -118,8 +117,8 @@ header small{color:var(--ink2);font-size:12px;text-transform:uppercase;letter-sp
 
 /* additions */
 [hidden]{display:none!important}
-.sub{display:flex;gap:6px;margin-top:12px}
-.sub button{border:1px solid var(--line);background:var(--panel);color:var(--ink2);border-radius:10px;padding:7px 12px;font:600 13px "Public Sans",sans-serif;cursor:pointer}
+.sub{display:flex;gap:6px;margin-top:12px;flex-wrap:wrap}
+.sub button{min-height:44px;border:1px solid var(--line);background:var(--panel);color:var(--ink2);border-radius:10px;padding:7px 12px;font:600 13px "Public Sans",sans-serif;cursor:pointer}
 .sub button[aria-pressed="true"]{background:var(--gold2);border-color:var(--gold);color:var(--ink)}
 .task{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-top:10px}
 .task .t{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
@@ -155,3 +154,54 @@ header small{color:var(--ink2);font-size:12px;text-transform:uppercase;letter-sp
 @media (prefers-reduced-motion:reduce){.rec{animation:none}}
 .legend{font-size:12px;color:var(--ink2);margin-top:8px}
 .legend span{padding:1px 6px;border-radius:4px;margin-right:6px}
+.lb td.hit{background:rgba(31,122,77,.18);color:var(--good);font-weight:600}
+#acct .lb tr>:first-child{position:sticky;left:0;background:var(--panel);white-space:nowrap}
+.sec{margin:22px 0 4px;font-size:18px}
+.sec small{color:var(--ink2);font:600 13px "Public Sans",sans-serif}
+.task .t{align-items:center}
+.task .ttl{flex:1;min-height:44px;border:0;background:none;padding:0;text-align:left;color:var(--ink);font:700 16px "Bricolage Grotesque","Public Sans",sans-serif;cursor:pointer}
+.task .ck{flex:none;display:flex;align-items:center;justify-content:center;width:44px;height:44px;margin:-6px 0 -6px -10px;cursor:pointer}
+.task .ck input{width:22px;height:22px;accent-color:var(--good);cursor:pointer}
+.task .x{flex:none;width:44px;height:44px;margin:-6px -10px -6px 0;border:0;background:none;color:var(--ink2);font-size:22px;cursor:pointer}
+.task [data-show]{min-height:44px;margin:-6px -4px -6px 0;border:0;background:none;text-align:right}
+.toast button{margin-left:8px;border:0;background:var(--gold);color:#1B1526;border-radius:999px;padding:6px 12px;font:700 13px "Public Sans",sans-serif;cursor:pointer;min-height:44px}
+#tq{font-size:16px;padding:12px;min-height:48px}
+.hi{margin:18px 0 0;font-size:26px}
+#today .task .ttl{display:flex;align-items:center;cursor:default}
+.meter{display:flex;align-items:center;gap:14px;margin-top:14px}
+.meter b{font-family:"Bricolage Grotesque",sans-serif;font-size:17px}
+.clsbar{margin-top:10px;font-size:12px;color:var(--ink2)}
+.clsbar .bar{height:4px;background:var(--line);border-radius:2px;margin-top:4px;overflow:hidden}
+.clsbar .bar i{display:block;height:100%;background:var(--ink2)}
+.sig{grid-column:1/-1;border-top:1px solid var(--line);padding-top:12px;cursor:default;-webkit-user-select:text;user-select:text}
+.sigtop{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.sigtop b{color:var(--ink2);font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-right:auto}
+.schip{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:2px 9px;font:600 12px "Public Sans",sans-serif;color:var(--ink2);white-space:nowrap}
+.schip.s-confirmed,.schip.s-done{border-color:var(--gold);color:var(--ink)}
+.schip.s-signed{border-color:var(--good);color:var(--good)}
+.diff{display:inline-block;background:var(--line);color:var(--ink);border-radius:6px;padding:2px 7px;font:700 12px "Public Sans",sans-serif;font-variant-numeric:tabular-nums}
+.sigtask{display:block;width:100%;min-height:44px;margin-top:8px;border:0;background:none;padding:0;text-align:left;color:var(--ink);font:15px "Public Sans",sans-serif;cursor:pointer}
+.sigtask .pen{color:var(--ink2);font-size:12px}
+.sigedit{display:flex;gap:8px;flex-wrap:wrap}
+.sigedit label{flex:1;min-width:130px;display:grid;gap:4px;font:600 11px "Public Sans",sans-serif;text-transform:uppercase;letter-spacing:.06em;color:var(--ink2)}
+.sigedit select{min-height:44px;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:10px;padding:8px;font:14px "Public Sans",sans-serif;text-transform:none;letter-spacing:0}
+.sigcols{display:grid;gap:4px}
+@media (min-width:600px){.sigcols{grid-template-columns:repeat(3,1fr);gap:12px}}
+.sigr{display:flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:4px 4px 4px 10px;margin-top:6px}
+.sigr .nm{flex:1;min-width:0;min-height:44px;border:0;background:none;padding:0;text-align:left;color:var(--ink);font:600 14px "Public Sans",sans-serif;cursor:pointer}
+.sigr .nm small{display:block;color:var(--ink2);font-weight:500;font-size:12px}
+.sigr .schip{font-size:11px}
+.sigr .nx{flex:none;width:44px;height:44px;border:0;background:none;color:var(--ink);font-size:20px;cursor:pointer}
+.podium{display:grid;gap:6px;margin-top:10px}
+.pod{display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.pod .pl{font:800 20px "Bricolage Grotesque",sans-serif;color:var(--ink2);width:1.2em}
+.pod div{flex:1;min-width:0}
+.pod b{display:block}
+.pod small{color:var(--ink2);font-size:12px}
+.pod .pts{font:800 22px "Bricolage Grotesque",sans-serif;font-variant-numeric:tabular-nums}
+.sigr .nxl{flex:none;min-height:44px;white-space:nowrap}
+.ongo{margin:14px 0 0;font:600 12px "Public Sans",sans-serif;text-transform:uppercase;letter-spacing:.06em;color:var(--ink2)}
+.ogd summary{cursor:pointer;list-style:none;min-height:44px}
+.ogd summary::-webkit-details-marker{display:none}
+.ogd summary .sec::after{content:" ▸";color:var(--ink2);font-size:14px}
+.ogd[open] summary .sec::after{content:" ▾"}
