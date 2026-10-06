@@ -9,11 +9,11 @@ function fromDb(d){
   d=d||{};
   const cards=objToArr(d.cards,'order'); cards.forEach(c=>{ c.extra=c.extra||{}; });
   const byAtDesc=(a,b)=>(a.at<b.at?1:-1);
-  return { version:d.version||0, cards, log:objToArr(d.log).sort(byAtDesc), facts:objToArr(d.facts,'order'), tasks:objToArr(d.tasks).sort((a,b)=>(a.due||'9999')<(b.due||'9999')?-1:1), recitals:objToArr(d.recitals).sort(byAtDesc), guide:objToArr(d.guide,'order'), passages: d.passages? objToArr(d.passages,'order') : SEED.passages, drill:d.drill||{}, informals:d.informals||null, exams:d.exams||{}, quiz:d.quiz||null };
+  return { version:d.version||0, cards, log:objToArr(d.log).sort(byAtDesc), facts:objToArr(d.facts,'order'), tasks:objToArr(d.tasks).sort((a,b)=>(a.due||'9999')<(b.due||'9999')?-1:1), recitals:objToArr(d.recitals).sort(byAtDesc), guide:objToArr(d.guide,'order'), passages: d.passages? objToArr(d.passages,'order') : SEED.passages, drill:d.drill||{}, informals:d.informals||null, exams:d.exams||{}, quiz:d.quiz||null, recaps:d.recaps||{} };
 }
 async function dbGet(path){ const r=await fetch(DB+'/'+path+'.json',{cache:'no-store'}); if(!r.ok) throw new Error('read '+r.status); return r.json(); }
 async function dbWrite(method,path,body){ const r=await fetch(DB+'/'+path+'.json',{method,body:body===undefined?undefined:JSON.stringify(body)}); if(!r.ok) throw new Error('write '+r.status); return r.json(); }
-const KEYS=['version','cards','log','facts','tasks','recitals','passages','drill','guide','informals','exams','quiz'];
+const KEYS=['version','cards','log','facts','tasks','recitals','passages','drill','guide','informals','exams','quiz','recaps'];
 async function loadPhotos(){
   if(Object.keys(URIS).length) return;
   try{ const c=localStorage.getItem('bn-photos'); if(c){ URIS=JSON.parse(c); if(Object.keys(URIS).length) { checkPhotoVersion(); return; } } }catch(e){}
@@ -292,6 +292,12 @@ function informals(){
   return out;
 }
 const examOn = (n, iso) => { const x=(S.exams||{})[key(n)]||(S.exams||{})[n]; return (Array.isArray(x)?x:Object.values(x||{})).filter(e=>e&&e.date===iso); };
+function recapRepliesHtml(){
+  // PCP only: who replied to the latest daily recap email (written by the noon recap job: recaps/<date> = {sentAt, replied: {name: true|false}})
+  const R=S.recaps||{}, d=Object.keys(R).sort().pop(); if(!isPCP()||!d) return '';
+  const rep=R[d].replied||{}, yes=PC().filter(n=>rep[n]), no=PC().filter(n=>!rep[n]);
+  return `<div class="editor"><h2>Replied? <small class="status">recap of ${esc(shortDay(d))}</small></h2><ul class="goals">${PC().map(n=>`<li><span>${esc(first(n))}</span><b class="${rep[n]?'ok':'no'}">${rep[n]?'Replied':'Not yet'}</b></li>`).join('')}</ul><div class="status">${yes.length} of ${PC().length} replied${R[d].checkedAt?` · checked ${esc(fmt(R[d].checkedAt))}`:''}</div></div>`;
+}
 function examsTomorrowHtml(){
   if(!isPCP()||!S.exams||!Object.keys(S.exams).length) return ''; const d=addDays(today(),1), rows=PC().flatMap(n=>examOn(n,d).map(e=>[n,e]));
   return `<div class="editor"><h2>Exams tomorrow</h2>${rows.length?`<ul class="goals">${rows.map(([n,e])=>`<li><span>${esc(first(n))} · ${esc(e.course||'Exam')}</span><b>${esc(e.time||'')}</b></li>`).join('')}</ul>`:'<div class="status">Nobody has an exam tomorrow.</div>'}</div>`;
@@ -679,6 +685,7 @@ function renderToday(){
   todayEl.innerHTML=`<h2 class="hi">Hi ${esc(first(me))}</h2><div class="status">${now?`${now} task${now===1?'':'s'} due today or overdue.`:'Nothing due today.'}</div>
     <div class="meter">${ring(wk.pct)}<div><b>This week</b><div class="status" style="margin:0">${wk.done} of ${wk.tot} done</div><div class="status" style="margin:2px 0 0">${esc(P.label)}</div><div class="status" style="margin:2px 0 0">${st}-day streak</div></div></div>
     <div class="clsbar"><span>Whole class: ${cls.pct===null?'—':cls.pct+'%'} this week</span><div class="bar"><i style="width:${cls.pct||0}%"></i></div></div>
+    ${recapRepliesHtml()}
     ${examsTomorrowHtml()}
     ${weeklyHtml()}
     ${myMilestonesHtml()}
@@ -858,7 +865,7 @@ function renderRollBoard(){
 }
 
 // ---------- error safety net ----------
-function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06n'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
+function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06o'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
   b.innerHTML='<span style="flex:1;word-break:break-word">Something broke: '+esc(msg)+'</span><button onclick="location.reload()" style="border:0;background:#fff;color:#B23A3A;border-radius:8px;padding:6px 10px;font:600 13px \'Public Sans\',sans-serif;cursor:pointer">Reload</button><button onclick="document.getElementById(\'errbar\').remove()" style="border:0;background:transparent;color:#fff;font-size:18px;cursor:pointer">×</button>'; }
 window.addEventListener('error', e=>{ showErr((e.message||'error')+' @'+(e.lineno||'?')); try{ render(); }catch(x){} });
 window.addEventListener('unhandledrejection', e=>{ showErr('async: '+((e.reason&&e.reason.message)||e.reason||'error')); });

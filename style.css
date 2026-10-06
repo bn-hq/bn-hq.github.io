@@ -243,3 +243,4 @@ header small{color:var(--ink2);font-size:12px;text-transform:uppercase;letter-sp
 .lb td.grade{font-weight:700;font-family:"Bricolage Grotesque",sans-serif;font-size:15px}
 .hb .hv small{font-size:11px;color:var(--ink2);font-weight:500}
 .infg{margin:6px 0 2px;padding:8px 12px;border:1px dashed var(--line);border-radius:12px;font-size:14px;font-weight:600}
+.goals b.ok{color:var(--good)} .goals b.no{color:var(--ink2)}
