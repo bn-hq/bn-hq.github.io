@@ -32,6 +32,7 @@ A task for several people (or the whole class) stays open until every assignee h
 
 Google Sheets with personal data (brothers' emails, exam schedules) are never published or read by the browser. A nightly 10 PM sync (run from Savi's Claude session with his Drive access) writes only aggregates to Firebase:
 - `informals` – `{updatedAt, counts: {pledgeName: {done, confirmed, emailed}}}` from the Informals Tracker (Signups). Target 25 each, Ali 30.
+- `recaps` – `{YYYY-MM-DD: {sentAt, checkedAt, replied: {pledgeName: true|false}}}` from the daily noon recap email job; the PCP sees the latest as "Replied?" on Today. No email content is stored.
 - `exams` – `{pledgeName: [{date, course, time}]}` from the Class and Exam Schedule. Used for the PCP's "Exams tomorrow" card and "exam that day" flags.
 
 The Signature Tasks Tracker can still override sig status client-side if it is shared for viewing (see `SHEETS` in app.js); otherwise the site keeps its own sig data.
