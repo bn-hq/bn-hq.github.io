@@ -35,7 +35,7 @@ Plans, weekly %, streaks and rankings are computed from these timestamps; nothin
 
 A task for several people (or the whole class) stays open until every assignee has checked it on their own board. The PCP can view anyone's board (read-only) and sees who each task is waiting on.
 
-Google Sheets with personal data (brothers' emails, exam schedules) are never published or read by the browser. A nightly 10 PM sync (run from Savi's Claude session with his Drive access) writes only aggregates to Firebase:
+Google Sheets with personal data (brothers' emails, exam schedules) are never published or read by the browser. A sync every 2 hours, 8 AM–10 PM (run from Savi's Claude session with his Drive access) writes only aggregates to Firebase:
 - `informals` – `{updatedAt, counts: {pledgeName: {done, confirmed, emailed}}}` from the Informals Tracker (Signups). Target 25 each, Ali 30.
 - `recaps` – `{YYYY-MM-DD: {sentAt, checkedAt, replied: {pledgeName: true|false}}}` from the daily noon recap email job; the PCP sees the latest as "Replied?" on Today. No email content is stored.
 - `exams` – `{pledgeName: [{date, course, time}]}` from the Class and Exam Schedule. Used for the PCP's "Exams tomorrow" card and "exam that day" flags.
