@@ -231,3 +231,12 @@ header small{color:var(--ink2);font-size:12px;text-transform:uppercase;letter-sp
 .fullname{margin-top:4px;font-size:14px;font-weight:600}
 .fullname small{display:block;color:var(--ink2);font:600 10px "Public Sans",sans-serif;text-transform:uppercase;letter-spacing:.06em}
 .rate3:not([hidden]){position:sticky;bottom:calc(8px + env(safe-area-inset-bottom,0px));z-index:5;background:var(--bg);padding:6px 0;border-radius:14px}
+.qset{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin-top:10px}
+.qset>div{flex:1;min-width:0}
+.qset b{display:block;font-family:"Bricolage Grotesque",sans-serif;font-size:16px}
+.qset small{color:var(--ink2);font-size:12px}
+.qset .small{min-height:44px}
+.qq{font-size:18px;line-height:1.3}
+#qa{font-size:16px}
+.qedit{border-top:1px solid var(--line);padding-top:10px;margin-top:10px}
+.qedit .small{min-width:44px;min-height:44px}
