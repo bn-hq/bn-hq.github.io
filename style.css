@@ -149,6 +149,7 @@ header small{color:var(--ink2);font-size:12px;text-transform:uppercase;letter-sp
 .lb th,.lb td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
 .lb th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink2)}
 .lb td.n{font-variant-numeric:tabular-nums;text-align:right}
+.lb th.n{text-align:right}
 .rec{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--bad);margin-right:6px;animation:pulse 1s infinite}
 @keyframes pulse{50%{opacity:.3}}
 @media (prefers-reduced-motion:reduce){.rec{animation:none}}
