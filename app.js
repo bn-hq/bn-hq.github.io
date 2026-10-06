@@ -80,7 +80,7 @@ function renderWho(){
 function askName(){
   const names=PC();
   const m=document.createElement('div'); m.className='modal';
-  m.innerHTML=`<div><h2>Which pledge are you?</h2><p>Your name goes on every edit, task check-off, and recital score.</p><select id="nm" style="width:100%;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:10px;padding:10px;font:15px 'Public Sans',sans-serif"><option value="">Pick your name</option>${names.map(n=>`<option value="${esc(n)}" ${n===me?'selected':''}>${esc(n)}</option>`).join('')}</select><div class="ctrl"><button class="btn primary" id="ok">Continue</button></div></div>`;
+  m.innerHTML=`<div><h2>Which pledge are you?</h2><p>Your name goes on every edit, task check-off, and spell score.</p><select id="nm" style="width:100%;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:10px;padding:10px;font:15px 'Public Sans',sans-serif"><option value="">Pick your name</option>${names.map(n=>`<option value="${esc(n)}" ${n===me?'selected':''}>${esc(n)}</option>`).join('')}</select><div class="ctrl"><button class="btn primary" id="ok">Continue</button></div></div>`;
   document.body.appendChild(m);
   const sel=m.querySelector('#nm'); sel.focus();
   const done=()=>{ const v=sel.value; if(!v){ sel.focus(); return; } me=v; try{localStorage.setItem('bn-user',me);}catch(e){} m.remove(); renderWho(); render(); };
@@ -114,11 +114,11 @@ function renderChips(){
   chipsEl.innerHTML = items.map(([k,l])=>`<button class="chip" data-f="${esc(k)}" aria-pressed="${filter===k}">${esc(l)}</button>`).join('');
 }
 chipsEl.addEventListener('click', e=>{ const b=e.target.closest('.chip'); if(!b) return; filter=b.dataset.f; renderChips(); resetOrder(); if(mode==='quiz'){ saveDrill(); startDrill(); } render(); });
-const STUDY=['learn','quiz','roll','recite'], INFO=['guide','facts','log'], TASKS=['tasks','sigs'];
+const STUDY=['learn','quiz','roll'], INFO=['guide','facts','log'], TASKS=['tasks','sigs'];
 let lastStudy='learn', lastInfo='guide', lastTasks='tasks'; try{ const v=JSON.parse(localStorage.getItem('bn-sub')||'{}'); if(STUDY.includes(v.s)) lastStudy=v.s; if(INFO.includes(v.i)) lastInfo=v.i; if(TASKS.includes(v.t)) lastTasks=v.t; }catch(e){}
 const tabOf = m => STUDY.includes(m)?'study':INFO.includes(m)?'info':TASKS.includes(m)?'tasks':m;
 function setMode(m){
-  if(mode==='quiz') saveDrill(); resetOrder(); stopRec(); mode=m;
+  if(mode==='quiz') saveDrill(); resetOrder(); mode=m;
   if(STUDY.includes(m)) lastStudy=m; if(INFO.includes(m)) lastInfo=m; if(TASKS.includes(m)) lastTasks=m; try{ localStorage.setItem('bn-sub',JSON.stringify({s:lastStudy,i:lastInfo,t:lastTasks})); }catch(e){}
   if(mode==='quiz') startDrill(); render(); window.scrollTo({top:0});
   refresh().then(()=>{ order=order.map(c=>S.cards.find(x=>x.photo===c.photo)||c); if(mode!=='learn'&&mode!=='quiz') render(); });
@@ -276,92 +276,6 @@ function renderGrid(){
 }
 gridEl.addEventListener('click', e=>{ const t=e.target.closest('.tile'); if(!t) return; view='cards'; resetOrder(); idx=order.findIndex(c=>c.photo===t.dataset.p); flipped=true; render(); window.scrollTo({top:0}); });
 
-// ---------- recite ----------
-const recEl=document.getElementById('recite');
-let pIdx=0, recog=null, recording=false, heardFinal='', heardInterim='', recMode='mic', hidePassage=false;
-const PUNCT = [
-  [/\b(semi[\s-]?colon)\b/gi,' ; '],[/\b(full[\s-]?stop|period)\b/gi,' . '],[/\bcomma\b/gi,' , '],[/\bcolon\b/gi,' : '],
-  [/\b(open|opening|begin) quote\b/gi,' " '],[/\b(close|closing|end) quote\b/gi,' " '],[/\bquote\b/gi,' " '],[/\bquotation( mark)?\b/gi,' " '],
-  [/\bhyphen\b/gi,' - '],[/\bdash\b/gi,' - ']
-];
-function tokens(text){
-  // returns [{w, p:bool}] words and punctuation tokens
-  return (text.match(/[A-Za-z0-9']+|[;:,."\-]/g)||[]).map(w=>({w, p:/^[;:,."\-]$/.test(w), n:/^[;:,."\-]$/.test(w)?w:w.toLowerCase().replace(/[^a-z0-9]/g,'')}));
-}
-function spokenToTokens(text){
-  let t=' '+text+' '; for(const [re,rep] of PUNCT) t=t.replace(re,rep);
-  return tokens(t);
-}
-function lev(a,b){ const m=a.length,n=b.length; if(!m) return n; if(!n) return m; let prev=[...Array(n+1).keys()]; for(let i=1;i<=m;i++){ const cur=[i]; for(let j=1;j<=n;j++){ cur[j]=Math.min(prev[j]+1,cur[j-1]+1,prev[j-1]+(a[i-1]===b[j-1]?0:1)); } prev=cur; } return prev[n]; }
-function sim(a,b){ if(a.p&&b.p) return a.w===b.w?1:0; if(a.p||b.p) return 0; const A=a.n,B=b.n; if(A===B) return 1; if(A.length<3||B.length<3) return A===B?1:0; const d=lev(A,B); return 1-d/Math.max(A.length,B.length); }
-function grade(ref, said){
-  // LCS-style alignment with fuzzy match; returns per-ref-token status and stats
-  const R=ref, H=said, m=R.length, n=H.length;
-  const dp=Array.from({length:m+1},()=>new Float64Array(n+1));
-  for(let i=m-1;i>=0;i--) for(let j=n-1;j>=0;j--){ const s=sim(R[i],H[j]); const take = s>=0.72 ? s+dp[i+1][j+1] : 0; dp[i][j]=Math.max(dp[i+1][j],dp[i][j+1],take); }
-  const status=new Array(m).fill('miss'); let i=0,j=0, extras=0;
-  while(i<m&&j<n){ const s=sim(R[i],H[j]); if(s>=0.72 && s+dp[i+1][j+1]>=dp[i][j]-1e-6){ status[i]= s>=0.99?'ok':'near'; i++; j++; } else if(dp[i+1][j]>=dp[i][j+1]){ i++; } else { j++; extras++; } }
-  extras += n-j;
-  const words=R.filter(t=>!t.p).length, puncts=R.filter(t=>t.p).length;
-  let wOk=0,pOk=0; R.forEach((t,k)=>{ if(status[k]!=='miss'){ if(t.p) pOk++; else wOk++; } });
-  const pct = Math.round(100*(wOk+pOk*0.5)/(words+puncts*0.5) - Math.min(15, extras*0.5));
-  return {status, words, puncts, wOk, pOk, extras, pct:Math.max(0,pct)};
-}
-function stopRec(){ if(recog){ try{ recog.stop(); }catch(e){} } recording=false; }
-function renderRecite(){
-  const P=S.passages; const p=P[pIdx]; const ref=tokens(p.text);
-  const SR = window.SpeechRecognition||window.webkitSpeechRecognition;
-  const mine = S.recitals.filter(r=>r.who===me&&r.passage===p.id).map(r=>r.pct); const best = mine.length?Math.max(...mine):null;
-  recEl.innerHTML=`
-    <div class="sub">${P.map((x,i)=>`<button data-pi="${i}" aria-pressed="${i===pIdx}">${esc(x.title)}</button>`).join('')}</div>
-    <div class="passage ${hidePassage?'hide':''}" id="ptext"><p>${ref.map((t,k)=>`<span class="tk" data-k="${k}">${esc(t.w)}</span>`).join(' ').replace(/ ([;:,.])/g,'$1')}</p></div>
-    <div class="ctrl"><button class="btn" id="hideP">${hidePassage?'Show text':'Hide text'}</button><button class="btn" id="mMic" aria-pressed="${recMode==='mic'}">🎙 Speak</button><button class="btn" id="mType" aria-pressed="${recMode==='type'}">⌨ Type</button></div>
-    <div class="legend">Say punctuation out loud: <b>quote</b> at the start and end, <b>semicolon</b>, <b>comma</b>, <b>full stop</b> (or "period"). Word for word. Pronunciation is graded leniently, punctuation is not.</div>
-    ${recMode==='mic' ? `<div class="ctrl"><button class="btn primary" id="recbtn">${recording?'■ Stop':'● Start recording'}</button><button class="btn" id="clear">Clear</button></div>
-      <div class="heard" id="heard">${SR?'':'Speech recognition is not available in this browser. Use Chrome or Safari, or switch to Type.'}</div>`
-    : `<div class="field" style="margin-top:12px"><label>Type it from memory (punctuation included)</label><textarea id="typed" style="min-height:140px"></textarea></div>`}
-    <div class="ctrl"><button class="btn ok" id="gradebtn">Check it</button></div>
-    <div id="result"></div>
-    <div class="editor" style="margin-top:14px"><h2>Scoreboard · ${esc(p.title)}</h2>${best!==null?`<div class="status">Your best: <b>${best}%</b> over ${mine.length} logged attempt${mine.length===1?'':'s'}</div>`:'<div class="status">No attempts yet. Every Check is logged.</div>'}
-      <table class="lb"><tr><th>Pledge</th><th class="n">Best</th><th class="n">Attempts</th><th>Last</th></tr>${PC().map(n=>{ const rs=S.recitals.filter(r=>r.who===n&&r.passage===p.id); const b=rs.length?Math.max(...rs.map(r=>r.pct)):null; return `<tr><td>${esc(n)}</td><td class="n">${b===null?'—':b+'%'}</td><td class="n">${rs.length}</td><td>${rs.length?fmt(rs[0].at):'—'}</td></tr>`; }).join('')}</table>
-      <div class="status">Names come from the Beta Omega roster.</div></div>`;
-  recEl.querySelectorAll('[data-pi]').forEach(b=>b.onclick=()=>{ stopRec(); pIdx=+b.dataset.pi; heardFinal=heardInterim=''; renderRecite(); });
-  recEl.querySelector('#hideP').onclick=()=>{ hidePassage=!hidePassage; renderRecite(); };
-  recEl.querySelector('#mMic').onclick=()=>{ recMode='mic'; renderRecite(); };
-  recEl.querySelector('#mType').onclick=()=>{ stopRec(); recMode='type'; renderRecite(); };
-  if(recMode==='mic'){
-    const heard=recEl.querySelector('#heard');
-    const paint=()=>{ heard.innerHTML=esc(heardFinal)+(heardInterim?`<span class="interim"> ${esc(heardInterim)}</span>`:''); };
-    if(heardFinal||heardInterim) paint();
-    recEl.querySelector('#clear').onclick=()=>{ heardFinal=heardInterim=''; paint(); recEl.querySelector('#result').innerHTML=''; };
-    recEl.querySelector('#recbtn').onclick=()=>{
-      if(recording){ stopRec(); renderRecite(); return; }
-      if(!SR){ toast('No speech recognition here. Switch to Type.'); return; }
-      recog=new SR(); recog.lang='en-US'; recog.continuous=true; recog.interimResults=true;
-      recog.onresult=e=>{ let fin='',inter=''; for(let i=e.resultIndex;i<e.results.length;i++){ const r=e.results[i]; if(r.isFinal) fin+=r[0].transcript+' '; else inter+=r[0].transcript+' '; } if(fin) heardFinal+=fin; heardInterim=inter; paint(); };
-      recog.onerror=e=>{ recording=false; const msg = e.error==='not-allowed'||e.error==='service-not-allowed' ? 'Mic blocked. Allow the microphone for this page, or open the link in a new tab, or use Type.' : 'Mic error: '+e.error; toast(msg); renderRecite(); };
-      recog.onend=()=>{ if(recording){ try{ recog.start(); }catch(e){ recording=false; renderRecite(); } } };
-      try{ recog.start(); recording=true; renderRecite(); }catch(e){ toast('Could not start the mic: '+e.message); }
-    };
-  }
-  recEl.querySelector('#gradebtn').onclick=async()=>{
-    stopRec();
-    const saidText = recMode==='mic' ? (heardFinal+' '+heardInterim) : recEl.querySelector('#typed').value;
-    const said = recMode==='mic' ? spokenToTokens(saidText) : tokens(saidText);
-    if(!said.length){ toast('Nothing to grade yet.'); return; }
-    const g=grade(ref, said);
-    hidePassage=false; recEl.querySelector('#ptext').classList.remove('hide');
-    recEl.querySelectorAll('.tk').forEach(el=>{ el.classList.remove('ok','miss','near'); el.classList.add(g.status[+el.dataset.k]); });
-    const missed = ref.filter((t,k)=>g.status[k]==='miss');
-    recEl.querySelector('#result').innerHTML=`<div class="reveal"><div class="big">${g.pct}%<small> · ${g.wOk}/${g.words} words · ${g.pOk}/${g.puncts} punctuation · ${g.extras} extra</small></div>
-      <div class="legend"><span class="tk ok">green</span> exact <span class="tk near">yellow</span> close enough <span class="tk miss">red</span> missed</div>
-      ${missed.length?`<div style="margin-top:8px;font-size:13px">Missed: ${missed.slice(0,40).map(t=>esc(t.w)).join(' · ')}${missed.length>40?' …':''}</div>`:'<div style="margin-top:8px;font-weight:600;color:var(--good)">Word perfect.</div>'}
-      <div class="status" id="logst">Logging this attempt to your record…</div></div>`;
-    const ok=await commit(null, st=>{ st.recitals.unshift({who:me,at:when(),passage:p.id,pct:g.pct}); if(st.recitals.length>400) st.recitals.length=400; });
-    const ls=recEl.querySelector('#logst'); if(ls) ls.textContent = ok ? 'Logged to your record ('+g.pct+'%). Every check counts, so no free tries.' : 'Not logged (see message).';
-  };
-}
-
 // ---------- sig tasks (stored on each brother's card as c.sig) ----------
 const SIG=['none','requested','confirmed','done','signed'];
 const SIGL={none:'Not asked',requested:'Requested',confirmed:'Confirmed',done:'Done, needs signature',signed:'Signed'};
@@ -448,10 +362,11 @@ function parseTask(line, base){
 const previewText = p => p.bad.length ? `Unknown: ${p.bad.join(' ')} (use @number, @first name or @me)` : `For: ${whoText(p.who)} · ${p.due?'Due '+dueText(p.due):'Ongoing'}`;
 const newTask = p => Object.assign({id:uid(),title:p.title,notes:'',by:me,at:when(),done:{}}, p.due?{due:p.due}:{}, p.who.length?{who:p.who}:{});
 async function addTasks(ps){
+  if(!isPCP()){ toast('Only the PCP can add tasks.'); return false; }
   const ok=await commit({who:me,at:when(),card:'Tasks',changes:ps.map(p=>({field:'Added task',from:'',to:p.title+' ('+whoText(p.who)+', due '+p.due+')'}))}, st=>{ for(const p of ps) st.tasks.push(newTask(p)); });
   if(ok){ tDraft=''; render(); } return ok;
 }
-let tDraft='', tEdit=null, tWho=[];
+let tDraft='', tEdit=null, tWho=[], tBoard='', tAll=false;
 function undoToast(text, onUndo){
   document.querySelectorAll('.toast').forEach(x=>x.remove()); const d=document.createElement('div'); d.className='toast'; d.innerHTML=`${esc(text)} <button>Undo</button>`; document.body.appendChild(d);
   const t=setTimeout(()=>d.remove(),5000); d.querySelector('button').onclick=()=>{ clearTimeout(t); d.remove(); onUndo(); };
@@ -492,21 +407,53 @@ function bindTasks(el, rerender){
   ed.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); save(); } if(e.key==='Escape'){ tEdit=null; rerender(); } };
 }
 function renderTasks(){
+  // everyone sees their own board; the PCP can switch to anyone's board (or Everyone) and is the only one who can add
+  const pcp=isPCP(), who=pcp?tBoard:me, fn=who?first(who):'';
   const byDue=(a,b)=>(a.due||'9999')<(b.due||'9999')?-1:(a.due||'9999')>(b.due||'9999')?1:0;
-  const L=S.tasks.slice().sort(byDue), mine=L.filter(t=>me&&(t.who||[]).includes(me)), all=L.filter(t=>!(t.who||[]).length), other=L.filter(t=>(t.who||[]).length&&!(t.who||[]).includes(me));
+  const L=S.tasks.slice().sort(byDue), all=L.filter(t=>!(t.who||[]).length);
   const sec=(h,ts,empty)=>{ const dated=ts.filter(t=>t.due), og=ts.filter(t=>!t.due); return ts.length||empty?`<h3 class="sec">${h} <small>${ts.length}</small></h3>${dated.map(taskHtml).join('')}${og.length?`<div class="ongo">Ongoing <small>${og.length}</small></div>${og.map(taskHtml).join('')}`:''}${ts.length?'':`<div class="reveal">${empty}</div>`}`:''; };
+  const target=p=>{ if(!p.who.length&&who&&!tAll) p.who=[who]; return p; };
+  const hint=`@4 or @Tim to assign (none = ${who&&!tAll?esc(fn):'whole class'}) · fri, 10/12, in 3 days to set a due date (none = ongoing) · Enter to add`;
   const focused=document.activeElement&&document.activeElement.id==='tq';
-  tasksEl.innerHTML=`<div class="field" style="margin-top:14px"><input id="tq" placeholder="Add a task…" autocomplete="off" enterkeyhint="done" value="${esc(tDraft)}"><div class="status" id="tprev">${tDraft.trim()?esc(previewText(parseTask(tDraft))):'@4 or @Tim to assign · fri, 10/12, in 3 days to set a due date (none = ongoing) · Enter to add'}</div></div>
-    ${sec('Mine',mine,'Nothing assigned just to you.')}${sec('Whole class',all,'No class tasks yet.')}${sec('Assigned to others',other)}`;
+  const board = !me ? '<div class="reveal" style="margin-top:14px">Pick your name to see your tasks.</div>'
+    : who ? sec(who===me?'Just for you':'Just for '+esc(fn),L.filter(t=>(t.who||[]).includes(who)),'Nothing assigned just to '+(who===me?'you':esc(fn))+'.')+sec('Whole class',all,'No class tasks yet.')
+    : sec('Mine',L.filter(t=>(t.who||[]).includes(me)),'Nothing assigned just to you.')+sec('Whole class',all,'No class tasks yet.')+sec('Assigned to others',L.filter(t=>(t.who||[]).length&&!(t.who||[]).includes(me)));
+  tasksEl.innerHTML=(pcp?`<div class="chips"><button class="chip" data-bd="" aria-pressed="${!tBoard}">Everyone</button>${(SEED.roster||[]).map(r=>`<button class="chip" data-bd="${esc(r.name)}" aria-pressed="${tBoard===r.name}">#${r.n} ${esc(first(r.name))}</button>`).join('')}</div>
+    <div class="field" style="margin-top:12px"><input id="tq" placeholder="${who?'Add a task for '+esc(fn)+'…':'Add a task for the whole class…'}" autocomplete="off" enterkeyhint="done" value="${esc(tDraft)}">
+    ${who?`<div class="chips" style="margin-top:6px"><button class="chip" id="tall" aria-pressed="${tAll}">Add to all</button></div>`:''}
+    <div class="status" id="tprev">${tDraft.trim()?esc(previewText(target(parseTask(tDraft)))):hint}</div></div>`
+    :`<div class="status" style="margin-top:14px">Your tasks. Only the PCP (${esc(PCP()||'not set')}) can add or remove tasks.</div>`)+board;
+  bindTasks(tasksEl, renderTasks);
+  if(!pcp) return;
+  tasksEl.querySelectorAll('[data-bd]').forEach(b=>b.onclick=()=>{ tBoard=b.dataset.bd; tAll=false; renderTasks(); });
+  const ta=tasksEl.querySelector('#tall'); if(ta) ta.onclick=()=>{ tAll=!tAll; renderTasks(); };
   const q=tasksEl.querySelector('#tq'), pv=tasksEl.querySelector('#tprev');
   if(focused){ q.focus(); q.setSelectionRange(q.value.length,q.value.length); }
-  q.oninput=()=>{ tDraft=q.value; pv.textContent=tDraft.trim()?previewText(parseTask(tDraft)):''; };
-  q.onkeydown=async e=>{ if(e.key!=='Enter') return; e.preventDefault(); const p=parseTask(q.value); if(p.bad.length){ toast(previewText(p)); return; } if(!p.title) return; q.disabled=true; if(!await addTasks([p])) q.disabled=false; };
+  q.oninput=()=>{ tDraft=q.value; pv.textContent=tDraft.trim()?previewText(target(parseTask(tDraft))):''; };
+  q.onkeydown=async e=>{ if(e.key!=='Enter') return; e.preventDefault(); const p=target(parseTask(q.value)); if(p.bad.length){ toast(previewText(p)); return; } if(!p.title) return; q.disabled=true; if(!await addTasks([p])) q.disabled=false; };
   q.onpaste=async e=>{ const lines=(e.clipboardData||window.clipboardData).getData('text').split(/\r?\n/).map(x=>x.trim()).filter(Boolean); if(lines.length<2) return; e.preventDefault();
-    const ps=lines.map(l=>parseTask(l)).filter(p=>p.title); const bad=ps.filter(p=>p.bad.length);
+    const ps=lines.map(l=>target(parseTask(l))).filter(p=>p.title); const bad=ps.filter(p=>p.bad.length);
     if(!confirm(`Add ${ps.length} tasks?\n\n`+ps.map(p=>`• ${p.title} (${previewText(p)})`).join('\n')+(bad.length?`\n\n${bad.length} line(s) have unknown @names; those are ignored.`:''))) return;
     ps.forEach(p=>p.bad=[]); await addTasks(ps); };
-  bindTasks(tasksEl, renderTasks);
+}
+
+// ---------- milestones ----------
+// what "done" means for each milestone; change the date or tests here
+const MILESTONES={by:'2026-10-12', items:[
+  {id:'names', label:'All names', how:'every face solid (rated 5 twice in a row in Drill)', val:n=>[Object.values(S.drill[n]||{}).filter(x=>x.last==='ok'&&(x.streak||0)>=2).length, S.cards.length]},
+  {id:'quiz', label:'Quiz 100%', how:'Spell 100% on all 4 class rolls', val:n=>[ROLLS.filter(r=>rollBest(n,r.cls)===100).length, ROLLS.length]}]};
+function msLeft(){ const d=Math.round((new Date(MILESTONES.by+'T12:00:00')-new Date(today()+'T12:00:00'))/864e5); return d>1?d+' days left':d===1?'1 day left':d===0?'due today':'past due'; }
+function milestonesHtml(){
+  const M=MILESTONES.items, rows=PC().map(n=>({n,v:M.map(m=>m.val(n))})), met=([a,b])=>b>0&&a>=b, late=today()>MILESTONES.by;
+  return `<div class="editor" style="margin-top:12px"><h2>Milestones · ${esc(dueText(MILESTONES.by))}</h2>
+    <div class="status">${M.map((m,i)=>`${esc(m.label)}: <b>${rows.filter(r=>met(r.v[i])).length} of ${rows.length}</b> done`).join(' · ')} · ${msLeft()}</div>
+    <div style="overflow-x:auto"><table class="lb"><tr><th>Pledge</th>${M.map(m=>`<th class="n">${esc(m.label)}</th>`).join('')}<th class="n">Both</th></tr>
+    ${rows.map(r=>`<tr><td>${esc(first(r.n))}${r.n===me?' <b>(you)</b>':''}</td>${r.v.map(v=>`<td class="n${met(v)?' hit':late?' miss':''}">${v[0]}/${v[1]}</td>`).join('')}<td class="n${r.v.every(met)?' hit':''}">${r.v.every(met)?'✓':'—'}</td></tr>`).join('')}</table></div>
+    <div class="status">${M.map(m=>`${esc(m.label)} = ${esc(m.how)}`).join('. ')}.</div></div>`;
+}
+function myMilestonesHtml(){
+  if(!me) return ''; const M=MILESTONES.items;
+  return `<div class="editor"><h2>By ${esc(dueText(MILESTONES.by))} <small class="status">${msLeft()}</small></h2>${M.map(m=>{ const [a,b]=m.val(me); return `<div class="ms"><div><b>${esc(m.label)}</b><span>${a}/${b}</span></div><div class="bar"><i style="width:${b?Math.round(100*a/b):0}%"></i></div></div>`; }).join('')}</div>`;
 }
 
 // ---------- accountability ----------
@@ -517,7 +464,7 @@ function weekPoints(n, ws){
   const we=addDays(ws,6), inWk=ts=>{ if(!ts) return false; const d=isoDay(ts); return d>=ws&&d<=we; };
   const tasks=S.tasks.filter(t=>inWk((t.done||{})[n])).length;
   const sigs=S.cards.filter(c=>c.sig&&c.sig.owner===n&&c.sig.status==='signed'&&inWk(c.sig.signedAt)).length;
-  const perfect=S.recitals.filter(r=>r.who===n&&r.pct===100&&inWk(r.at)).length;
+  const perfect=S.recitals.filter(r=>r.who===n&&String(r.passage).startsWith('roll:')&&r.pct===100&&inWk(r.at)).length;
   const faces=Object.values(S.drill[n]||{}).filter(x=>x.last==='ok'&&(x.streak||0)>=2&&inWk(x.at)).length;
   return {n, tasks, sigs, perfect, faces, pts:tasks+3*sigs+perfect+faces};
 }
@@ -526,27 +473,26 @@ function rankHtml(){
   const why=r=>[r.tasks&&r.tasks+' task'+(r.tasks===1?'':'s'),r.sigs&&r.sigs+' sig'+(r.sigs===1?'':'s'),r.perfect&&r.perfect+' perfect',r.faces&&r.faces+' face'+(r.faces===1?'':'s')].filter(Boolean).join(' · ');
   return `<div class="editor" style="margin-top:12px"><h2>Weekly ranking</h2>
     <div class="sub" style="margin-top:0"><button data-rw="0" aria-pressed="${!rankWeek}">This week</button><button data-rw="1" aria-pressed="${!!rankWeek}">Last week</button></div>
-    <div class="status">${esc(dayLabel(ws).replace(/^\w+, /,''))} – ${esc(dayLabel(addDays(ws,6)).replace(/^\w+, /,''))}. 1 point per task checked off, 3 per sig task you own that gets signed, 1 per 100% Spell or Recite, 1 per face that turns solid.</div>
+    <div class="status">${esc(dayLabel(ws).replace(/^\w+, /,''))} – ${esc(dayLabel(addDays(ws,6)).replace(/^\w+, /,''))}. 1 point per task checked off, 3 per sig task you own that gets signed, 1 per 100% Spell, 1 per face that turns solid.</div>
     ${rows[0].pts?'':'<div class="status">No points yet. The top 3 show once someone scores.</div>'}<div class="podium">${rows.slice(0,rows[0].pts?3:0).map((r,i)=>`<div class="pod"><span class="pl">${i+1}</span><div><b>${esc(r.n)}${r.n===me?' (you)':''}</b><small>${esc(why(r))||'No points yet'}</small></div><span class="pts">${r.pts}</span></div>`).join('')}</div>
     <table class="lb">${rows.slice(rows[0].pts?3:0).map((r,i)=>`<tr><td class="n" style="width:2em;text-align:left">${i+(rows[0].pts?4:1)}</td><td>${esc(r.n)}${r.n===me?' <b>(you)</b>':''}</td><td class="n">${r.pts}</td></tr>`).join('')}</table></div>`;
 }
 function renderAcct(){
-  const pc=PC(); const total=S.cards.length; const P=S.passages;
+  const pc=PC(); const total=S.cards.length;
   const solidOf=n=>Object.values(S.drill[n]||{}).filter(x=>x.last==='ok'&&(x.streak||0)>=2).length;
   const rows=pc.map(n=>{
     const solid=solidOf(n);
     const spell=ROLLS.map(r=>rollBest(n,r.cls));
-    const rec=P.map(p=>{ const rs=S.recitals.filter(r=>r.who===n&&r.passage===p.id); return rs.length?Math.max(...rs.map(r=>r.pct)):null; });
     const mine=S.tasks.filter(t=>isFor(t,n)), done=mine.filter(t=>isDone(t,n)).length;
-    const hits=(solid>=total?1:0)+spell.concat(rec).filter(b=>b===100).length+(mine.length&&done===mine.length?1:0);
-    return {n,solid,spell,rec,done,assigned:mine.length,hits};
+    const hits=(solid>=total?1:0)+spell.filter(b=>b===100).length+(mine.length&&done===mine.length?1:0);
+    return {n,solid,spell,done,assigned:mine.length,hits};
   }).sort((a,b)=>b.hits-a.hits||b.solid-a.solid);
   const pctCell=b=>`<td class="n${b===100?' hit':''}">${b===null?'—':b+'%'}</td>`;
-  acctEl.innerHTML=rankHtml()+`<div class="editor" style="margin-top:12px"><h2>Where everyone stands</h2>
-    <div class="status">Green = target hit. Faces = brothers rated 5 twice in a row. Spell and Recite = best score (target 100%). Tasks = done / assigned.</div>
-    <div style="overflow-x:auto"><table class="lb"><tr><th>Pledge</th><th class="n">Faces</th>${ROLLS.map(r=>`<th class="n">${esc(r.cls.replace('Beta ',''))}</th>`).join('')}${P.map(p=>`<th class="n">${esc(p.title.replace('Ideal ',''))}</th>`).join('')}<th class="n">Tasks</th></tr>
-    ${rows.map(r=>`<tr><td>${esc(r.n.split(' ')[0])}${r.n===me?' <b>(you)</b>':''}</td><td class="n${r.solid>=total?' hit':''}">${r.solid}/${total}</td>${r.spell.map(pctCell).join('')}${r.rec.map(pctCell).join('')}<td class="n${r.assigned&&r.done===r.assigned?' hit':''}">${r.done}/${r.assigned}</td></tr>`).join('')}</table></div>
-    <div class="status">Spell columns: Psi, Chi, Phi, Upsilon rolls. Recite columns: Purpose, Ideal Member, Ideal Chapter.</div></div>
+  acctEl.innerHTML=milestonesHtml()+rankHtml()+`<div class="editor" style="margin-top:12px"><h2>Where everyone stands</h2>
+    <div class="status">Green = target hit. Faces = brothers rated 5 twice in a row. Spell = best score (target 100%). Tasks = done / assigned.</div>
+    <div style="overflow-x:auto"><table class="lb"><tr><th>Pledge</th><th class="n">Faces</th>${ROLLS.map(r=>`<th class="n">${esc(r.cls.replace('Beta ',''))}</th>`).join('')}<th class="n">Tasks</th></tr>
+    ${rows.map(r=>`<tr><td>${esc(r.n.split(' ')[0])}${r.n===me?' <b>(you)</b>':''}</td><td class="n${r.solid>=total?' hit':''}">${r.solid}/${total}</td>${r.spell.map(pctCell).join('')}<td class="n${r.assigned&&r.done===r.assigned?' hit':''}">${r.done}/${r.assigned}</td></tr>`).join('')}</table></div>
+    <div class="status">Spell columns: Psi, Chi, Phi, Upsilon rolls.</div></div>
     ${me&&S.drill[me]?`<div class="editor" style="margin-top:12px"><h2>Your weak spots</h2><div class="grid" style="margin-top:6px">${S.cards.filter(c=>{const x=S.drill[me][c.photo]; return x&&x.last!=='ok';}).map(c=>{const x=S.drill[me][c.photo]; return `<div class="tile"><img src="${IMG(c.photo)}" alt=""><div>${esc(c.name)}<small>${x.last==='miss'?'name wrong':'facts shaky'} · ${x.miss} wrong · ${x.some||0} partial</small></div></div>`;}).join('')||'<div class="status">No misses on record. Either you are cracked or you have not drilled.</div>'}</div></div>`:''}`;
   acctEl.querySelectorAll('[data-rw]').forEach(b=>b.onclick=()=>{ rankWeek=+b.dataset.rw; renderAcct(); });
 }
@@ -568,7 +514,7 @@ function renderGuide(){
 // ---------- DSP facts ----------
 const factsEl=document.getElementById('facts');
 function renderFacts(){
-  factsEl.innerHTML=`<div class="factlist">${S.facts.length?S.facts.map((f,i)=>`<div class="fact"><b>${esc(f.q)}</b><div class="a hide" title="tap to reveal">${esc(f.a)}</div><div class="ctrl" style="margin-top:6px"><button class="small" data-e="${i}">Edit</button><button class="small" data-d="${i}">Delete</button></div></div>`).join(''):'<div class="reveal">No DSP facts yet. Add the ones the brothers give you. (The purpose statement and the ideal member / chapter are under Recite.)</div>'}</div>
+  factsEl.innerHTML=`<div class="factlist">${S.facts.length?S.facts.map((f,i)=>`<div class="fact"><b>${esc(f.q)}</b><div class="a hide" title="tap to reveal">${esc(f.a)}</div><div class="ctrl" style="margin-top:6px"><button class="small" data-e="${i}">Edit</button><button class="small" data-d="${i}">Delete</button></div></div>`).join(''):'<div class="reveal">No DSP facts yet. Add the ones the brothers give you.</div>'}</div>
   <div class="editor" id="fed"><h2>Add a fact</h2><div class="field"><label>Question / prompt</label><input id="fq" placeholder="e.g. DSP founding date"></div><div class="field"><label>Answer</label><textarea id="fa" placeholder="e.g. November 7, 1907, NYU"></textarea></div><div class="ctrl"><button class="btn primary" id="fadd">Save for everyone</button></div></div>`;
   factsEl.querySelectorAll('.a').forEach(a=>a.onclick=()=>a.classList.toggle('hide'));
   factsEl.querySelector('#fadd').onclick=async()=>{ const q=factsEl.querySelector('#fq').value.trim(), a=factsEl.querySelector('#fa').value.trim(); if(!q||!a) return; const ok=await commit({who:me,at:when(),card:'DSP facts',changes:[{field:q,from:'',to:a}]},st=>st.facts.push({q,a})); if(ok) renderFacts(); };
@@ -616,13 +562,13 @@ function renderToday(){
   const now=S.tasks.filter(t=>isFor(t,me)&&!isDone(t,me)&&t.due&&t.due<=t0).length;
   const solid=Object.values(S.drill[me]||{}).filter(x=>x.last==='ok'&&(x.streak||0)>=2).length;
   const spell=ROLLS.filter(r=>rollBest(me,r.cls)===100).length;
-  const rec=S.passages.filter(p=>S.recitals.some(r=>r.who===me&&r.passage===p.id&&r.pct===100)).length;
   const dayName = d => d===t0?'Today':d===t1?'Tomorrow':dayLabel(d);
   const goal = (d,ts) => { const k=ts.filter(t=>isDone(t,me)).length; return `${d===t0?"Today's goal":'Goal'}: ${k} of ${ts.length} done`; };
   todayEl.innerHTML=`<h2 class="hi">Hi ${esc(first(me))}</h2><div class="status">${now?`${now} task${now===1?'':'s'} due today or overdue.`:'Nothing due today.'}</div>
     <div class="meter">${ring(wk.pct)}<div><b>This week</b><div class="status" style="margin:0">${wk.done} of ${wk.tot} done · resets Monday</div><div class="status" style="margin:2px 0 0">${st}-day streak</div></div></div>
     <div class="clsbar"><span>Whole class: ${cls.pct===null?'—':cls.pct+'%'} this week</span><div class="bar"><i style="width:${cls.pct||0}%"></i></div></div>
-    <div class="editor"><h2>Your progress</h2><div class="status">Faces solid <b>${solid}/${S.cards.length}</b> · Rolls spelled 100% <b>${spell}/${ROLLS.length}</b> · Recitals 100% <b>${rec}/${S.passages.length}</b></div>
+    ${myMilestonesHtml()}
+    <div class="editor"><h2>Your progress</h2><div class="status">Faces solid <b>${solid}/${S.cards.length}</b> · Rolls spelled 100% <b>${spell}/${ROLLS.length}</b></div>
       <div class="ctrl"><button class="btn primary" id="tdrill">Start drill</button></div></div>
     ${(()=>{ const own=sigCards().filter(c=>sigOf(c).owner===me&&sigOf(c).status!=='signed').sort((a,b)=>SIG.indexOf(sigOf(b).status)-SIG.indexOf(sigOf(a).status)); return own.length?`<h3 class="sec">Sig tasks I own <small>${own.length}</small></h3>${own.map(c=>sigRow(c,true)).join('')}`:''; })()}
     ${plan.catchup.length?`<h3 class="sec">Catch up <small>${plan.catchup.filter(t=>isDone(t,me)).length} of ${plan.catchup.length} done</small></h3>${plan.catchup.map(t=>checkRow(t,me,true)).join('')}`:''}
@@ -686,18 +632,18 @@ function renderRollBoard(){
 }
 
 // ---------- error safety net ----------
-function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06e'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
+function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06f'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
   b.innerHTML='<span style="flex:1;word-break:break-word">Something broke: '+esc(msg)+'</span><button onclick="location.reload()" style="border:0;background:#fff;color:#B23A3A;border-radius:8px;padding:6px 10px;font:600 13px \'Public Sans\',sans-serif;cursor:pointer">Reload</button><button onclick="document.getElementById(\'errbar\').remove()" style="border:0;background:transparent;color:#fff;font-size:18px;cursor:pointer">×</button>'; }
 window.addEventListener('error', e=>{ showErr((e.message||'error')+' @'+(e.lineno||'?')); try{ render(); }catch(x){} });
 window.addEventListener('unhandledrejection', e=>{ showErr('async: '+((e.reason&&e.reason.message)||e.reason||'error')); });
 
 // ---------- render ----------
 function render(){
-  if(!['today','learn','quiz','roll','recite','tasks','sigs','guide','facts','acct','log'].includes(mode)) mode='today';
+  if(!['today','learn','quiz','roll','tasks','sigs','guide','facts','acct','log'].includes(mode)) mode='today';
   document.getElementById('count').textContent=`${pool().length} in this set · ${Object.keys(stars).length} starred · data v${S.version}`;
   const showChips = mode==='learn'||mode==='quiz';
   chipsEl.hidden=!showChips; document.getElementById('count').hidden=!showChips;
-  for(const id of ['today','learn','quiz','roll','recite','tasks','sigs','guide','facts','acct','log']) document.getElementById(id).hidden = mode!==id;
+  for(const id of ['today','learn','quiz','roll','tasks','sigs','guide','facts','acct','log']) document.getElementById(id).hidden = mode!==id;
   const tab=tabOf(mode);
   document.querySelectorAll('[role=tab]').forEach(t=>t.setAttribute('aria-selected', t.dataset.tab===tab));
   document.getElementById('studysub').hidden = tab!=='study'; document.getElementById('infosub').hidden = tab!=='info'; document.getElementById('tasksub').hidden = tab!=='tasks';
@@ -707,7 +653,6 @@ function render(){
   else if(mode==='roll') renderRoll();
   else if(mode==='quiz') renderQuiz();
   else if(mode==='acct') renderAcct();
-  else if(mode==='recite') renderRecite();
   else if(mode==='tasks') renderTasks();
   else if(mode==='sigs') renderSigs();
   else if(mode==='facts') renderFacts();
@@ -716,4 +661,4 @@ function render(){
 }
 renderWho(); setStatus('Loading…');
 Promise.all([loadPhotos(),refresh()]).then(()=>{ renderChips(); resetOrder(); render(); if(!me) setTimeout(askName, 300); });
-setInterval(()=>{ const ae=document.activeElement, typing=ae&&(ae.tagName==='TEXTAREA'||(ae.tagName==='INPUT'&&ae.type!=='checkbox')); if(document.visibilityState==='visible' && !typing && !tEdit && !editing && !recording && !dirEdit && mode!=='learn' && mode!=='quiz') refresh().then(()=>{ order=order.map(c=>S.cards.find(x=>x.photo===c.photo)||c); drun=drun.map(c=>S.cards.find(x=>x.photo===c.photo)||c); if(['today','tasks','sigs','acct','log','facts','guide'].includes(mode)) render(); }); }, 30000);
+setInterval(()=>{ const ae=document.activeElement, typing=ae&&(ae.tagName==='TEXTAREA'||(ae.tagName==='INPUT'&&ae.type!=='checkbox')); if(document.visibilityState==='visible' && !typing && !tEdit && !editing && !dirEdit && mode!=='learn' && mode!=='quiz') refresh().then(()=>{ order=order.map(c=>S.cards.find(x=>x.photo===c.photo)||c); drun=drun.map(c=>S.cards.find(x=>x.photo===c.photo)||c); if(['today','tasks','sigs','acct','log','facts','guide'].includes(mode)) render(); }); }, 30000);

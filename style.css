@@ -205,3 +205,9 @@ header small{color:var(--ink2);font-size:12px;text-transform:uppercase;letter-sp
 .ogd summary::-webkit-details-marker{display:none}
 .ogd summary .sec::after{content:" ▸";color:var(--ink2);font-size:14px}
 .ogd[open] summary .sec::after{content:" ▾"}
+.lb td.miss{color:var(--bad)}
+.ms{margin-top:10px}
+.ms>div:first-child{display:flex;justify-content:space-between;font-size:14px}
+.ms span{font-variant-numeric:tabular-nums;color:var(--ink2)}
+.ms .bar{height:6px;background:var(--line);border-radius:3px;margin-top:4px;overflow:hidden}
+.ms .bar i{display:block;height:100%;background:var(--good)}
