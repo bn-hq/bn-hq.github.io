@@ -571,14 +571,15 @@ function gradeFor(n){
   const ip=c?Math.min(1,c.done/c.target):null; if(ip!==null) parts.push(ip);
   if(!parts.length) return null;
   const pct=Math.round(100*parts.reduce((a,b)=>a+b,0)/parts.length);
-  return {pct, letter:letter(pct), tasks:[td,xs.length], inf:c?[c.done,c.target]:null};
+  const up=S.tasks.filter(t=>isFor(t,n)&&!t.repeat&&!isDone(t,n)&&!(t.due&&t.due<t0)).length;
+  return {pct, letter:letter(pct), tasks:[td,xs.length], up, inf:c?[c.done,c.target]:null};
 }
 function gradesHtml(){
   const rows=PC().map(n=>[n,gradeFor(n)]).sort((a,b)=>(b[1]?b[1].pct:-1)-(a[1]?a[1].pct:-1)||a[0].localeCompare(b[0]));
   return `<div class="editor" style="margin-top:12px"><h2>Grades</h2>
     <div class="status">Half tasks completed (of everything due before today, plus anything finished early), half informals (Done vs target, ${INFORMALS.target}; ${Object.entries(INFORMALS.targets).map(([n,v])=>esc(first(n))+' '+v).join(', ')}). ${informals()?esc(informalsUpdated())+'.':'Informals not synced yet, so tasks only.'}</div>
     <table class="lb"><tr><th>Pledge</th><th class="n">Tasks</th><th class="n">Informals</th><th class="n">Score</th><th class="n">Grade</th></tr>
-    ${rows.map(([n,g])=>`<tr><td>${esc(first(n))}${n===me?' <b>(you)</b>':''}</td><td class="n">${g&&g.tasks[1]?g.tasks[0]+'/'+g.tasks[1]:'—'}</td><td class="n">${g&&g.inf?g.inf[0]+'/'+g.inf[1]:'—'}</td><td class="n">${g?g.pct+'%':'—'}</td><td class="n grade${g&&g.pct>=90?' hit':''}">${g?g.letter:'—'}</td></tr>`).join('')}</table></div>`;
+    ${rows.map(([n,g])=>`<tr><td>${esc(first(n))}${n===me?' <b>(you)</b>':''}</td><td class="n">${g&&g.tasks[1]?g.tasks[0]+'/'+g.tasks[1]+' due':'none due'}${g&&g.up?`<small style="display:block;color:var(--ink2);font-size:12px">${g.up} upcoming</small>`:''}</td><td class="n">${g&&g.inf?g.inf[0]+'/'+g.inf[1]:'—'}</td><td class="n">${g?g.pct+'%':'—'}</td><td class="n grade${g&&g.pct>=90?' hit':''}">${g?g.letter:'—'}</td></tr>`).join('')}</table></div>`;
 }
 
 function renderAcct(){
@@ -910,7 +911,7 @@ function renderRollBoard(){
 }
 
 // ---------- error safety net ----------
-function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06s'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
+function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-06t'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
   b.innerHTML='<span style="flex:1;word-break:break-word">Something broke: '+esc(msg)+'</span><button onclick="location.reload()" style="border:0;background:#fff;color:#B23A3A;border-radius:8px;padding:6px 10px;font:600 13px \'Public Sans\',sans-serif;cursor:pointer">Reload</button><button onclick="document.getElementById(\'errbar\').remove()" style="border:0;background:transparent;color:#fff;font-size:18px;cursor:pointer">×</button>'; }
 window.addEventListener('error', e=>{ showErr((e.message||'error')+' @'+(e.lineno||'?')); try{ render(); }catch(x){} });
 window.addEventListener('unhandledrejection', e=>{ showErr('async: '+((e.reason&&e.reason.message)||e.reason||'error')); });
