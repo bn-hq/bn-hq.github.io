@@ -291,3 +291,4 @@ header small{color:var(--ink2);font-size:12px;text-transform:uppercase;letter-sp
 .lb.grades th{white-space:normal}
 
 .ideas li{align-items:flex-start;gap:10px}.ideas .iact{display:flex;gap:6px;flex:0 0 auto;align-items:center}
+b.miss{color:var(--bad)}
