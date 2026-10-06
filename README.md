@@ -24,6 +24,8 @@ Grading (Spell and Quizzes): not case-sensitive and extra spaces don't matter; s
 
 Only the PCP (the roster entry whose role is "Pledge Class President") can add or delete tasks. That is a UI rule only: the database is open to anyone with the URL, so it is not real security.
 
+Daily goals are computed live too: informals left to the target ÷ days until the next meeting (shown on each day of Today's plan, on Weekly progress and on the PCP's view of a person's board, with "emails to send" = brothers not yet emailed), and for tasks with a numeric `target` (per-person progress in `prog`), what's left ÷ days until the due date.
+
 Plans, weekly %, streaks and rankings are computed from these timestamps; nothing extra is stored.
 
 A task for several people (or the whole class) stays open until every assignee has checked it on their own board. The PCP can view anyone's board (read-only) and sees who each task is waiting on.

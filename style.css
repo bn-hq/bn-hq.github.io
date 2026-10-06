@@ -213,7 +213,7 @@ header small{color:var(--ink2);font-size:12px;text-transform:uppercase;letter-sp
 .ms .bar i{display:block;height:100%;background:var(--good)}
 .weekly .wh{margin:14px 0 6px;font-size:15px}
 .weekly .wh small{font:500 11px "Public Sans",sans-serif;color:var(--ink2);margin-left:4px}
-.hb{display:grid;grid-template-columns:64px 1fr 52px;align-items:center;gap:8px;min-height:24px;font-size:13px}
+.hb{display:grid;grid-template-columns:64px 1fr 88px;align-items:center;gap:8px;min-height:24px;font-size:13px}
 .hb .hl{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hb .ht{position:relative;height:10px;background:var(--line);border-radius:5px}
 .hb .ht i{display:block;height:100%;border-radius:5px;background:var(--purple2)}
@@ -241,3 +241,5 @@ header small{color:var(--ink2);font-size:12px;text-transform:uppercase;letter-sp
 .qedit{border-top:1px solid var(--line);padding-top:10px;margin-top:10px}
 .qedit .small{min-width:44px;min-height:44px}
 .lb td.grade{font-weight:700;font-family:"Bricolage Grotesque",sans-serif;font-size:15px}
+.hb .hv small{font-size:11px;color:var(--ink2);font-weight:500}
+.infg{margin:6px 0 2px;padding:8px 12px;border:1px dashed var(--line);border-radius:12px;font-size:14px;font-weight:600}
