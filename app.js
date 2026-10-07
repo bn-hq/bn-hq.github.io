@@ -361,8 +361,10 @@ function buildSigSheet(){
 const fromSheet = c => !!(c&&SIGSHEET[c.photo]);
 
 // ---------- sig tasks (stored on each brother's card as c.sig) ----------
-const SIG=['none','requested','confirmed','done','signed'];
-const SIGL={none:'Not asked',requested:'Requested',confirmed:'Confirmed',done:'Done, needs signature',signed:'Signed'};
+const SIG=['none','requested','confirmed','scheduling','scheduled','inprogress','done','signed'];
+const SIGPCT={none:0,requested:10,confirmed:25,scheduling:40,scheduled:55,inprogress:70,done:85,signed:100};
+const SIGL={none:'Not asked',requested:'Requested',confirmed:'Task given',scheduling:'Scheduling',scheduled:'Date set',inprogress:'In progress',done:'Done, needs signature',signed:'Signed'};
+const SIGHOW={none:'Ask the brother for his sig task.',requested:'Waiting for him to give us a task.',confirmed:'We have the task. Next: send the When2meet.',scheduling:'When2meet sent. Waiting for availability.',scheduled:'Date confirmed.',inprogress:'The class is doing the task.',done:'Finished. Get the signature.',signed:'Signed. Counts toward the 30.'};
 const SIG_TARGET={pct:75, by:'2026-10-11'};
 const sigOf = c => { const b=(c&&c.sig)||{status:'none'}, o=c&&SIGSHEET[c.photo]; return o?Object.assign({},b,o):b; };
 const sigCards = () => S.cards.filter(c=>c.sig||SIGSHEET[c.photo]);
@@ -381,6 +383,9 @@ function sigHtml(c){
   if(!c||c.cls==='Beta Omega') return ''; const g=sigOf(c), i=SIG.indexOf(g.status);
   return `<div class="sig" data-sig="${esc(c.photo)}"><div class="sigtop"><b>Sig task</b>${sigChip(g.status)}${sigDiff(g.difficulty)}</div>
     <button class="sigtask" ${fromSheet(c)&&SIGSHEET[c.photo].task?'disabled':'data-sigtask'} title="Edit the task">${g.task?esc(g.task):'<span class="empty">No task text yet</span>'} <span class="pen">✎</span></button>${g.notes?`<div class="status">${esc(g.notes)}</div>`:''}
+    <div class="sigprog"><div class="bar"><i style="width:${SIGPCT[g.status]||0}%"></i></div><div class="status" style="margin:4px 0 0"><b>${SIGPCT[g.status]||0}%</b> · step ${i+1} of ${SIG.length} · ${esc(SIGHOW[g.status]||'')}</div>
+      <ol class="sigsteps">${SIG.slice(1).map((k,n)=>`<li class="${n+1<i?'ok':n+1===i?'now':''}">${esc(SIGL[k])}</li>`).join('')}</ol></div>
+    ${i>=SIG.indexOf('scheduled')?`<button class="sigtask" data-sigwhen title="Edit the date">${g.when?'📅 '+esc(g.when):'<span class="empty">Add the date</span>'} <span class="pen">✎</span></button>`:''}
     <div class="sigedit"><label>Difficulty<select data-sigdiff><option value="">—</option>${[1,2,3,4,5,6,7,8,9,10].map(d=>`<option ${+g.difficulty===d?'selected':''}>${d}</option>`).join('')}</select></label></div>
     ${fromSheet(c)?`<div class="status">Status comes from the ${SHEETS.sigs.name}; update it there.</div>`:`<div class="ctrl">${i>0?`<button class="btn" data-sigback style="flex:0 0 auto">← Back</button>`:''}${i<SIG.length-1?`<button class="btn" data-signext>Next step → ${esc(SIGL[SIG[i+1]])}</button>`:''}</div>`}</div>`;
 }
@@ -391,20 +396,20 @@ function bindSig(root, rerender){
   root.querySelectorAll('[data-signext]').forEach(b=>b.onclick=()=>step(b,1));
   root.querySelectorAll('[data-sigback]').forEach(b=>b.onclick=()=>step(b,-1));
   root.querySelectorAll('[data-sigdiff]').forEach(x=>x.onchange=()=>run(sigSet(ph(x),{difficulty:x.value?+x.value:''})));
+  root.querySelectorAll('[data-sigwhen]').forEach(b=>b.onclick=()=>{ const g=sigOf(S.cards.find(x=>x.photo===ph(b))); const v=prompt('Date and time (e.g. Sat 10/10, 2 PM)',g.when||''); if(v===null||v.trim()===(g.when||'')) return; run(sigSet(ph(b),{when:v.trim()})); });
   root.querySelectorAll('[data-sigtask]').forEach(b=>b.onclick=()=>{ const g=sigOf(S.cards.find(x=>x.photo===ph(b))); const v=prompt('Sig task',g.task||''); if(v===null||v.trim()===(g.task||'')) return; run(sigSet(ph(b),{task:v.trim()})); });
   root.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>openInDir(ph(b)));
 }
-const sigRow = (c,long) => { const g=sigOf(c); return `<div class="sigr" data-sig="${esc(c.photo)}"><button class="nm" data-open>${esc(c.name)}<small>${esc(c.cls.split(' (')[0])}</small></button>${sigDiff(g.difficulty)}${sigChip(g.status)}${fromSheet(c)?'':`${SIG.indexOf(g.status)>1?'<button class="nx" data-sigback aria-label="Move back a step">←</button>':''}${g.status==='signed'?'':long?'<button class="small nxl" data-signext>Next step →</button>':'<button class="nx" data-signext aria-label="Next step">→</button>'}`}</div>`; };
+const sigRow = (c,long) => { const g=sigOf(c); return `<div class="sigr" data-sig="${esc(c.photo)}"><button class="nm" data-open>${esc(c.name)}<small>${esc(c.cls.split(' (')[0])}</small></button>${sigDiff(g.difficulty)}${fromSheet(c)?'':`${SIG.indexOf(g.status)>1?'<button class="nx" data-sigback aria-label="Move back a step">←</button>':''}${g.status==='signed'?'':long?'<button class="small nxl" data-signext>Next step →</button>':'<button class="nx" data-signext aria-label="Next step">→</button>'}`}</div>`; };
 const sigsEl=document.getElementById('sigs');
 function renderSigs(){
   const list=sigCards(), nm=(a,b)=>a.name.localeCompare(b.name);
-  const cols=[['To request',['none','requested'],(a,b)=>SIG.indexOf(sigOf(a).status)-SIG.indexOf(sigOf(b).status)||nm(a,b)],
-    ['In progress',['confirmed','done'],(a,b)=>(+sigOf(a).difficulty||99)-(+sigOf(b).difficulty||99)||nm(a,b)],
-    ['Signed',['signed'],(a,b)=>(sigOf(b).signedAt||'')<(sigOf(a).signedAt||'')?-1:1]];
+  const order=['done','inprogress','scheduled','scheduling','confirmed','requested','none','signed'];
+  const cols=order.map(k=>[SIGL[k],[k],k==='signed'?(a,b)=>(sigOf(b).signedAt||'')<(sigOf(a).signedAt||'')?-1:1:(a,b)=>(+sigOf(a).difficulty||99)-(+sigOf(b).difficulty||99)||nm(a,b)]);
   const row=c=>sigRow(c);
   sigsEl.innerHTML=`<div class="status" style="margin-top:14px"><b>${esc(sigProgress())}</b></div>
-    <div class="sigcols">${cols.map(([h,sts,sort])=>{ const xs=list.filter(c=>sts.includes(sigOf(c).status)).sort(sort); return `<div><h3 class="sec">${h} <small>${xs.length}</small></h3>${xs.map(row).join('')||'<div class="status">None</div>'}</div>`; }).join('')}</div>
-    <div class="status">Every sig task is done by the whole class together. Tap a name to open the brother. → moves the sig task to its next step.</div>`;
+    <div class="sigstages">${cols.map(([h,sts,sort])=>{ const xs=list.filter(c=>sts.includes(sigOf(c).status)).sort(sort); return xs.length?`<div><h3 class="sec">${h} <small>${xs.length} · ${SIGPCT[sts[0]]}%</small></h3>${xs.map(row).join('')}</div>`:''; }).join('')}</div>
+    <div class="status">Stages: ${SIG.slice(1).map(k=>`${esc(SIGL[k])} ${SIGPCT[k]}%`).join(' → ')}. Tap a name for details. → / ← move a step.</div>`;
   bindSig(sigsEl, renderSigs);
 }
 
@@ -730,7 +735,7 @@ function renderToday(){
   const P2=P.endDay, real=days.filter(([d,ts])=>d===t0||ts.some(t=>t.repeat!=='daily')), near=real.filter(([d])=>d<=t1), week=real.filter(([d])=>d>t1&&d<=P2), later=real.filter(([d])=>d>P2);
   const daySec=([d,ts])=>{ const xs=ts.filter(t=>t.repeat!=='daily'||d===t0); return `<h3 class="sec">${esc(dayName(d))}${xs.length?` <small>${xs.filter(t=>isDone(t,me)).length} of ${xs.length} done</small>`:''}</h3>${ig&&d===t0?`<div class="infg">${ig.left?`Informals: do ${ig.per} today`:'Informals: target hit'} (${ig.done}/${ig.target})${ig.toEmail?` · ${ig.toEmail} brothers not emailed yet`:''}</div>`:''}${xs.map(t=>checkRow(t,me,false,d)).join('')||(d===t0?'<div class="status">Nothing else due today.</div>':'')}`; };
   const fold=(id,label,list)=>{ const n=list.reduce((k,[d,ts])=>k+ts.filter(t=>t.repeat!=='daily').length,0); return n?`<details class="ogd" data-fold="${id}" ${folds[id]?'open':''}><summary><h3 class="sec">${label} <small>${n}</small></h3></summary>${list.map(daySec).join('')}</details>`:''; };
-  const sigN=sigCards().filter(c=>['confirmed','done'].includes(sigOf(c).status)).length;
+  const sigN=sigCards().filter(c=>['confirmed','scheduling','scheduled','inprogress','done'].includes(sigOf(c).status)).length;
   todayEl.innerHTML=`<h2 class="hi">Hi ${esc(first(me))}</h2>
     <div class="meter">${ring(wk.pct)}<div><b>${now?`${now} due today or overdue`:'Nothing due today'}</b><div class="status" style="margin:0">This week: ${wk.done} of ${wk.tot} done</div><div class="status" style="margin:2px 0 0">${esc(P.label)}</div></div></div>
     ${recapRepliesHtml()}
@@ -987,7 +992,7 @@ function renderRollBoard(){
 }
 
 // ---------- error safety net ----------
-function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-07d'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
+function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-07e'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
   b.innerHTML='<span style="flex:1;word-break:break-word">Something broke: '+esc(msg)+'</span><button onclick="location.reload()" style="border:0;background:#fff;color:#B23A3A;border-radius:8px;padding:6px 10px;font:600 13px \'Public Sans\',sans-serif;cursor:pointer">Reload</button><button onclick="document.getElementById(\'errbar\').remove()" style="border:0;background:transparent;color:#fff;font-size:18px;cursor:pointer">×</button>'; }
 window.addEventListener('error', e=>{ showErr((e.message||'error')+' @'+(e.lineno||'?')); try{ render(); }catch(x){} });
 window.addEventListener('unhandledrejection', e=>{ showErr('async: '+((e.reason&&e.reason.message)||e.reason||'error')); });
