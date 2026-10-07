@@ -386,13 +386,15 @@ function sigHtml(c){
 }
 function bindSig(root, rerender){
   const ph=el=>el.closest('[data-sig]').dataset.sig, run=async p=>{ if(await p) rerender(); };
-  root.querySelectorAll('[data-signext]').forEach(b=>b.onclick=()=>{ b.disabled=true; run(sigStep(ph(b),1)); });
-  root.querySelectorAll('[data-sigback]').forEach(b=>b.onclick=()=>{ b.disabled=true; run(sigStep(ph(b),-1)); });
+  // every move shows an Undo toast, so a mis-tap is one tap to fix
+  const step=(b,dir)=>{ b.disabled=true; const p=ph(b), c=S.cards.find(x=>x.photo===p); run(sigStep(p,dir).then(ok=>{ if(ok) undoToast(`${first(c.name)}: ${SIGL[sigOf(S.cards.find(x=>x.photo===p)).status]}`, ()=>run(sigStep(p,-dir))); return ok; })); };
+  root.querySelectorAll('[data-signext]').forEach(b=>b.onclick=()=>step(b,1));
+  root.querySelectorAll('[data-sigback]').forEach(b=>b.onclick=()=>step(b,-1));
   root.querySelectorAll('[data-sigdiff]').forEach(x=>x.onchange=()=>run(sigSet(ph(x),{difficulty:x.value?+x.value:''})));
   root.querySelectorAll('[data-sigtask]').forEach(b=>b.onclick=()=>{ const g=sigOf(S.cards.find(x=>x.photo===ph(b))); const v=prompt('Sig task',g.task||''); if(v===null||v.trim()===(g.task||'')) return; run(sigSet(ph(b),{task:v.trim()})); });
   root.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>openInDir(ph(b)));
 }
-const sigRow = (c,long) => { const g=sigOf(c); return `<div class="sigr" data-sig="${esc(c.photo)}"><button class="nm" data-open>${esc(c.name)}<small>${esc(c.cls.split(' (')[0])}</small></button>${sigDiff(g.difficulty)}${sigChip(g.status)}${g.status==='signed'||fromSheet(c)?'':long?`<button class="small nxl" data-signext>Next step →</button>`:`<button class="nx" data-signext aria-label="Next step">→</button>`}</div>`; };
+const sigRow = (c,long) => { const g=sigOf(c); return `<div class="sigr" data-sig="${esc(c.photo)}"><button class="nm" data-open>${esc(c.name)}<small>${esc(c.cls.split(' (')[0])}</small></button>${sigDiff(g.difficulty)}${sigChip(g.status)}${fromSheet(c)?'':`${SIG.indexOf(g.status)>1?'<button class="nx" data-sigback aria-label="Move back a step">←</button>':''}${g.status==='signed'?'':long?'<button class="small nxl" data-signext>Next step →</button>':'<button class="nx" data-signext aria-label="Next step">→</button>'}`}</div>`; };
 const sigsEl=document.getElementById('sigs');
 function renderSigs(){
   const list=sigCards(), nm=(a,b)=>a.name.localeCompare(b.name);
@@ -963,7 +965,7 @@ function renderRollBoard(){
 }
 
 // ---------- error safety net ----------
-function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-07b'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
+function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-07c'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
   b.innerHTML='<span style="flex:1;word-break:break-word">Something broke: '+esc(msg)+'</span><button onclick="location.reload()" style="border:0;background:#fff;color:#B23A3A;border-radius:8px;padding:6px 10px;font:600 13px \'Public Sans\',sans-serif;cursor:pointer">Reload</button><button onclick="document.getElementById(\'errbar\').remove()" style="border:0;background:transparent;color:#fff;font-size:18px;cursor:pointer">×</button>'; }
 window.addEventListener('error', e=>{ showErr((e.message||'error')+' @'+(e.lineno||'?')); try{ render(); }catch(x){} });
 window.addEventListener('unhandledrejection', e=>{ showErr('async: '+((e.reason&&e.reason.message)||e.reason||'error')); });
