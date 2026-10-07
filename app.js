@@ -938,7 +938,7 @@ function renderQuizEdit(set){
 // ---------- spell (roll call) ----------
 const rollEl=document.getElementById('roll');
 const ROLLS=(SEED.rolls||[]).slice().sort((a,b)=>clsRank(a.cls)-clsRank(b.cls));
-let rIdx=0, rDraft={};
+let rIdx=0, rDraft={}, rAZ=false; try{ rAZ=localStorage.getItem('bn-roll-az')==='1'; }catch(e){}
 const nw = w => w.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
 const words = t => String(t||'').replace(/\*/g,'').split(/[\s\-]+/).filter(w=>nw(w));
 const qtoks = t => String(t||'').match(/[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*|[^\s\p{L}\p{N}]/gu)||[];
@@ -951,25 +951,30 @@ function lcsGrade(E, T, accents){
   const hit=ok.filter(Boolean).length, extras=n-hit;
   return {ok, hit, total:m, extras, pct:m?Math.max(0, Math.floor(100*hit/m - 0.5*extras)):0};
 }
-function rollWords(r){ return [['Class',[r.cls]],['VPPE',[r.vppe]],['Members',r.members]].map(([l,xs])=>[l,xs.map(x=>qtoks(x.replace(/\*/g,'')))]); }
+// A–Z mode: same names, sorted alphabetically by full name
+const rollMembers = r => rAZ ? r.members.slice().sort((a,b)=>a.replace(/\*/g,'').localeCompare(b.replace(/\*/g,''))) : r.members;
+const rollKey = r => (rAZ?'rollaz:':'roll:')+r.cls;
+function rollWords(r){ return [['Class',[r.cls]],['VPPE',[r.vppe]],['Members',rollMembers(r)]].map(([l,xs])=>[l,xs.map(x=>qtoks(x.replace(/\*/g,'')))]); }
 function gradeRoll(r, typed){
   // Spell: not case-sensitive, accents optional, * ignored; spelling, punctuation and order all count
   return lcsGrade(rollWords(r).flatMap(([,ls])=>ls.flat()), qtoks(typed), true);
 }
-const rollBest = (n,cls) => { const rs=S.recitals.filter(x=>x.who===n&&x.passage==='roll:'+cls); return rs.length?Math.max(...rs.map(x=>x.pct)):null; };
+const rollBest = (n,cls) => { const rs=S.recitals.filter(x=>x.who===n&&x.passage===(rAZ?'rollaz:':'roll:')+cls); return rs.length?Math.max(...rs.map(x=>x.pct)):null; };
 function renderRoll(){
   const r=ROLLS[rIdx]; if(!r){ rollEl.innerHTML='<div class="reveal">No rolls loaded.</div>'; return; }
   const d=rDraft[r.cls]=rDraft[r.cls]||{c:'',v:'',m:''};
   rollEl.innerHTML=`<div class="ctrl" style="margin-top:10px"><button class="small" id="rback">← Quizzes</button></div><div class="chips">${ROLLS.map((x,i)=>{ const b=rollBest(me,x.cls); return `<button class="chip" data-ri="${i}" aria-pressed="${i===rIdx}">${esc(x.cls)}${b===null?'':' · '+b+'%'}</button>`; }).join('')}</div>
     <div class="editor"><h2>Spell the ${esc(r.cls)} roll</h2>
+      <div class="chips" style="margin:0 0 10px"><button class="chip" id="rord0" aria-pressed="${!rAZ}">Roll order</button><button class="chip" id="rord1" aria-pressed="${rAZ}">A–Z</button></div>
       <div class="field"><label>Class name</label><input id="rc" autocomplete="off" autocapitalize="words" value="${esc(d.c)}"></div>
       <div class="field"><label>VPPE</label><input id="rv" autocomplete="off" autocapitalize="words" value="${esc(d.v)}"></div>
-      <div class="field"><label>Members (one per line, in order)</label><textarea id="rm" autocapitalize="words" style="min-height:220px">${esc(d.m)}</textarea></div>
+      <div class="field"><label>Members (one per line, ${rAZ?'alphabetical by first name':'in roll order'})</label><textarea id="rm" autocapitalize="words" style="min-height:220px">${esc(d.m)}</textarea></div>
       <div class="ctrl"><button class="btn primary" id="rcheck">Check it</button></div>
-      <div class="status">Full official names, in order. Capitals and accents don't matter; spelling, punctuation and order do. Target: 100% on every class.</div></div>
+      <div class="status">${rAZ?'Full official names, A–Z by first name. Practice mode: the class milestone counts roll order.':'Full official names, in roll order.'} Capitals and accents don't matter; spelling, punctuation and order do. Target: 100% on every class.</div></div>
     <div id="rres"></div><div id="rboard"></div>`;
   rollEl.querySelector('#rback').onclick=()=>setMode('quizzes');
   rollEl.querySelectorAll('[data-ri]').forEach(b=>b.onclick=()=>{ rIdx=+b.dataset.ri; renderRoll(); });
+  for(const [id,v] of [['rord0',false],['rord1',true]]) rollEl.querySelector('#'+id).onclick=()=>{ if(rAZ===v) return; rAZ=v; try{ localStorage.setItem('bn-roll-az',v?'1':'0'); }catch(e){} renderRoll(); };
   for(const [id,k] of [['rc','c'],['rv','v'],['rm','m']]) rollEl.querySelector('#'+id).oninput=e=>{ d[k]=e.target.value; };
   rollEl.querySelector('#rcheck').onclick=async()=>{
     const typed=[d.c,d.v,d.m].join('\n'); if(!words(typed).length){ toast('Type the roll first.'); return; }
@@ -979,20 +984,20 @@ function renderRoll(){
       <div class="passage" style="margin-top:8px">${rollWords(r).map(([l,ls])=>`<div><b style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2)">${l}</b>${ls.map((ws,i)=>`<div>${l==='Members'?(i+1)+'. ':''}${line(ws)}</div>`).join('')}</div>`).join('')}</div>
       <div class="legend"><span class="tk ok">green</span> exact <span class="tk miss">red</span> missed</div>
       <div class="status" id="rlog">Logging this attempt…</div></div>`;
-    const ok=await commit(null, st=>{ st.recitals.unshift({who:me,at:when(),passage:'roll:'+r.cls,pct:g.pct}); });
+    const ok=await commit(null, st=>{ st.recitals.unshift({who:me,at:when(),passage:rollKey(r),pct:g.pct}); });
     const ls=rollEl.querySelector('#rlog'); if(ls) ls.textContent = ok ? 'Logged ('+g.pct+'%).' : 'Not logged (see message).';
     renderRollBoard(); rollEl.querySelectorAll('[data-ri]').forEach((b,i)=>{ const x=rollBest(me,ROLLS[i].cls); b.textContent=ROLLS[i].cls+(x===null?'':' · '+x+'%'); });
   };
   renderRollBoard();
 }
 function renderRollBoard(){
-  const r=ROLLS[rIdx], id='roll:'+r.cls, mine=S.recitals.filter(x=>x.who===me&&x.passage===id), best=rollBest(me,r.cls);
-  rollEl.querySelector('#rboard').innerHTML=`<div class="editor"><h2>Scoreboard · ${esc(r.cls)}</h2>${best!==null?`<div class="status">Your best: <b>${best}%</b> over ${mine.length} attempt${mine.length===1?'':'s'}</div>`:'<div class="status">No attempts yet. Every Check is logged.</div>'}
+  const r=ROLLS[rIdx], id=rollKey(r), mine=S.recitals.filter(x=>x.who===me&&x.passage===id), best=rollBest(me,r.cls);
+  rollEl.querySelector('#rboard').innerHTML=`<div class="editor"><h2>Scoreboard · ${esc(r.cls)}${rAZ?' · A–Z':''}</h2>${best!==null?`<div class="status">Your best: <b>${best}%</b> over ${mine.length} attempt${mine.length===1?'':'s'}</div>`:'<div class="status">No attempts yet. Every Check is logged.</div>'}
     <table class="lb"><tr><th>Pledge</th><th class="n">Best</th><th class="n">Attempts</th></tr>${PC().map(n=>{ const b=rollBest(n,r.cls); return `<tr><td>${esc(n)}</td><td class="n${b===100?' hit':''}">${b===null?'—':b+'%'}</td><td class="n">${S.recitals.filter(x=>x.who===n&&x.passage===id).length}</td></tr>`; }).join('')}</table></div>`;
 }
 
 // ---------- error safety net ----------
-function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-07e'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
+function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-07f'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
   b.innerHTML='<span style="flex:1;word-break:break-word">Something broke: '+esc(msg)+'</span><button onclick="location.reload()" style="border:0;background:#fff;color:#B23A3A;border-radius:8px;padding:6px 10px;font:600 13px \'Public Sans\',sans-serif;cursor:pointer">Reload</button><button onclick="document.getElementById(\'errbar\').remove()" style="border:0;background:transparent;color:#fff;font-size:18px;cursor:pointer">×</button>'; }
 window.addEventListener('error', e=>{ showErr((e.message||'error')+' @'+(e.lineno||'?')); try{ render(); }catch(x){} });
 window.addEventListener('unhandledrejection', e=>{ showErr('async: '+((e.reason&&e.reason.message)||e.reason||'error')); });
