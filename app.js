@@ -115,17 +115,33 @@ function askName(){
 // ---------- helpers ----------
 const CLASS_ORDER=['Beta Upsilon','Beta Phi','Beta Chi','Beta Psi','Beta Omega'];
 const clsRank = cls => { const i=CLASS_ORDER.findIndex(k=>String(cls||'').startsWith(k)); return i<0?99:i; };
+// match a card to its spot on the class roll; accents, capitals, punctuation and spacing don't have to line up
+const nkey = s => String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
 function rollIndex(c){
   const r=(SEED.rolls||[]).find(x=>String(c.cls||'').startsWith(x.cls)); if(!r) return 999;
-  const f=String(c.full||'').trim(); if(f&&f===r.vppe) return 0; const i=r.members.findIndex(m=>m.replace(/^\*/,'')===f); return i<0?998:i+1;
+  const vp=nkey(r.vppe), ms=r.members.map(m=>nkey(m.replace(/^\*/,'')));
+  for(const f of [nkey(c.full), nkey(c.name)]){ if(!f) continue; if(f===vp) return 0; const i=ms.indexOf(f); if(i>=0) return i+1; }
+  return 998;
 }
 const byRoll = (a,b) => clsRank(a.cls)-clsRank(b.cls) || rollIndex(a)-rollIndex(b) || a.name.localeCompare(b.name);
+// where a brother sits in his class roll, for the Roll order deck ("Beta Upsilon · #3 of 14")
+function rollLabel(c){
+  const r=(SEED.rolls||[]).find(x=>String(c.cls||'').startsWith(x.cls)), i=rollIndex(c);
+  if(!r||i>=998) return c.cls||'';
+  return r.cls+' · '+(i===0?'VPPE':'#'+i+' of '+r.members.length);
+}
 function pool(){
   const p = filter==='starred' ? S.cards.filter(c=>stars[c.photo]) : filter==='all' ? S.cards.slice() : S.cards.filter(c=>c.cls===filter);
   return p.sort(byRoll);
 }
 function shuffle(a){ for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; }
-function resetOrder(){ order = fcSmart&&me ? smartOrder(pool()) : pool(); idx = 0; flipped=false; editing=false; document.getElementById('editor').hidden=true; }
+// deck order: 'smart' (weighted review), 'roll' (class by class, in the order the roll is called), 'az' (by name)
+let fcOrd='smart'; try{ const v=localStorage.getItem('bn-fc'); if(v==='roll'||v==='order') fcOrd='roll'; else if(v==='az') fcOrd='az'; }catch(e){}
+function resetOrder(){
+  const p=pool(); // pool() is already roll-sorted
+  order = fcOrd==='az' ? p.sort((a,b)=>a.name.localeCompare(b.name)) : fcOrd==='smart'&&me ? smartOrder(p) : p;
+  idx = 0; flipped=false; editing=false; document.getElementById('editor').hidden=true;
+}
 const when = () => new Date().toISOString();
 const fmt = iso => { const d=new Date(iso); return d.toLocaleDateString(undefined,{month:'short',day:'numeric'})+' '+d.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}); };
 const PC = () => (SEED.roster||[]).map(r=>r.name);
@@ -169,6 +185,7 @@ document.getElementById('dirq').addEventListener('input',renderDir);
 const cardEl=document.getElementById('card');
 function renderCard(){
   const c=order[idx];
+  document.querySelectorAll('#fcord [data-o]').forEach(b=>b.setAttribute('aria-pressed', b.dataset.o===fcOrd));
   if(!c){ cardEl.innerHTML='<div style="padding:40px;text-align:center;color:var(--ink2)">Nothing here. Star some brothers first.</div>'; document.getElementById('editor').hidden=true; return; }
   if(!flipped){
     cardEl.innerHTML=`<div class="front"><img src="${IMG(c.photo)}" alt="brother photo"><div class="hint">Tap to reveal · ${idx+1} / ${order.length}</div></div>`;
@@ -182,7 +199,7 @@ function renderCard(){
   const rt=document.getElementById('rate3'); rt.hidden=!flipped;
   if(flipped) rt.innerHTML=[[1,"Didn't know"],[3,'Partly'],[5,'Knew it']].map(([r,l],i)=>`<button class="btn r${r}" data-rate="${r}"><b>${i+1}</b> ${l}</button>`).join('');
   const p=pool(), solid=p.filter(x=>isSolid(recOf(x.photo))).length, rc=recOf(c.photo);
-  document.getElementById('fcprog').innerHTML = (me ? `Learned ${solid} of ${p.length}${rc.r?` · last time: ${rc.r===5?'knew it':rc.r>=3?'partly':"didn't know"}`:''}` : 'Pick your name to save your progress.');
+  document.getElementById('fcprog').innerHTML = (me ? `Learned ${solid} of ${p.length}${rc.r?` · last time: ${rc.r===5?'knew it':rc.r>=3?'partly':"didn't know"}`:''}` : 'Pick your name to save your progress.') + (fcOrd==='roll'?` · ${esc(rollLabel(c))}`:'');
   const s=document.getElementById('star'); const on=!!stars[c.photo]; s.setAttribute('aria-pressed',on); s.textContent=on?'★ Starred':'☆ Star';
   document.getElementById('editor').hidden=true;
 }
@@ -193,7 +210,8 @@ cardEl.addEventListener('keydown', e=>{ if(e.target!==cardEl) return; if(e.key==
 document.getElementById('next').onpointerdown=e=>{ if(e.button) return; if(!order.length) return; idx=(idx+1)%order.length; flipped=false; editing=false; renderCard(); };
 document.getElementById('prev').onpointerdown=e=>{ if(e.button) return; if(!order.length) return; idx=(idx-1+order.length)%order.length; flipped=false; editing=false; renderCard(); };
 document.getElementById('rate3').addEventListener('click', e=>{ const b=e.target.closest('[data-rate]'); if(b) rateCard(+b.dataset.rate); });
-const setSmart = v => { saveDrill(); fcSmart=v; try{ localStorage.setItem('bn-fc', v?'smart':'order'); }catch(e){} resetOrder(); render(); };
+const setFcOrd = v => { if(fcOrd===v) return; saveDrill(); fcOrd=v; try{ localStorage.setItem('bn-fc', v); }catch(e){} resetOrder(); render(); };
+document.getElementById('fcord').addEventListener('click', e=>{ const b=e.target.closest('[data-o]'); if(b) setFcOrd(b.dataset.o); });
 document.getElementById('star').onclick=()=>{ const c=order[idx]; if(!c) return; if(stars[c.photo]) delete stars[c.photo]; else stars[c.photo]=1; saveStars(); renderCard(); };
 document.getElementById('edit').onclick=()=>{ if(!order[idx]) return; if(!me){ askName(); return; } openInDir(order[idx].photo, true); };
 document.addEventListener('keydown', e=>{ if(mode!=='learn'||view!=='cards'||editing||['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
@@ -230,7 +248,7 @@ function renderEditorInto(ed, c, onDone){
 }
 
 // ---------- drill (self-graded flashcards) ----------
-let dres={}, fcSmart=true, saveT=null;
+let dres={}, saveT=null;
 function weight(c){ const x=(S.drill[me]||{})[c.photo]; if(!x) return 3; const r=x.r||(x.last==='ok'?5:x.last==='some'?3:1); const s=x.streak||0; if(r<=1) return 4.5; if(r===2) return 3.5; if(r===3) return 2.5; if(r===4) return 1.4; return s>=4?0.25:s>=2?0.6:1.2; }
 function smartOrder(p){
   // weighted sample without replacement: missed and never-seen first, solid ones (knew it 2+ in a row) less often
@@ -997,7 +1015,7 @@ function renderRollBoard(){
 }
 
 // ---------- error safety net ----------
-function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-07f'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
+function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-07g'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
   b.innerHTML='<span style="flex:1;word-break:break-word">Something broke: '+esc(msg)+'</span><button onclick="location.reload()" style="border:0;background:#fff;color:#B23A3A;border-radius:8px;padding:6px 10px;font:600 13px \'Public Sans\',sans-serif;cursor:pointer">Reload</button><button onclick="document.getElementById(\'errbar\').remove()" style="border:0;background:transparent;color:#fff;font-size:18px;cursor:pointer">×</button>'; }
 window.addEventListener('error', e=>{ showErr((e.message||'error')+' @'+(e.lineno||'?')); try{ render(); }catch(x){} });
 window.addEventListener('unhandledrejection', e=>{ showErr('async: '+((e.reason&&e.reason.message)||e.reason||'error')); });
