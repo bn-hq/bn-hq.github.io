@@ -178,7 +178,7 @@ header small{color:var(--ink2);font-size:12px;text-transform:uppercase;letter-sp
 .sigtop{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .sigtop b{color:var(--ink2);font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-right:auto}
 .schip{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:2px 9px;font:600 12px "Public Sans",sans-serif;color:var(--ink2);white-space:nowrap}
-.schip.s-confirmed,.schip.s-done{border-color:var(--gold);color:var(--ink)}
+.schip.s-confirmed,.schip.s-scheduling,.schip.s-scheduled,.schip.s-inprogress,.schip.s-done{border-color:var(--gold);color:var(--ink)}
 .schip.s-signed{border-color:var(--good);color:var(--good)}
 .diff{display:inline-block;background:var(--line);color:var(--ink);border-radius:6px;padding:2px 7px;font:700 12px "Public Sans",sans-serif;font-variant-numeric:tabular-nums}
 .sigtask{display:block;width:100%;min-height:44px;margin-top:8px;border:0;background:none;padding:0;text-align:left;color:var(--ink);font:15px "Public Sans",sans-serif;cursor:pointer}
@@ -293,3 +293,10 @@ header small{color:var(--ink2);font-size:12px;text-transform:uppercase;letter-sp
 
 .ideas li{align-items:flex-start;gap:10px}.ideas .iact{display:flex;gap:6px;flex:0 0 auto;align-items:center}
 b.miss{color:var(--bad)}
+
+.spct{font:600 11px "Public Sans",sans-serif;color:var(--ink2);margin-right:4px}
+.sigprog{margin:10px 0}
+.sigsteps{margin:8px 0 0;padding-left:20px;font-size:13px;color:var(--ink2);line-height:1.7}
+.sigsteps li.ok{color:var(--good)}
+.sigsteps li.now{color:var(--ink);font-weight:700}
+.sigstages>div{margin-bottom:6px}
