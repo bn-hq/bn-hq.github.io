@@ -549,7 +549,7 @@ const PACE_START='2026-09-16'; // induction day: informals and milestones are cu
 function pace(done, target, due){ const span=Math.max(1,daysTo(PACE_START,due)-1), gone=Math.min(span,Math.max(0,daysTo(PACE_START,today())-1)), exp=Math.round(target*gone/span); return {exp, ok:done>=exp, frac:gone/span}; }
 const paceTag = pc => pc.ok?'<span class="tag-ok">On pace</span>':'<span class="tag-bad">Behind</span>';
 const MILESTONES={by:'2026-10-11', items:[
-  {id:'names', label:'All names', how:'Spell 100% on all 4 classes, plus every flashcard solid (Knew it twice in a row)', val:n=>[ROLLS.filter(r=>rollBest(n,r.cls)===100).length+Object.values(S.drill[n]||{}).filter(x=>x.last==='ok'&&(x.streak||0)>=2).length, ROLLS.length+S.cards.length]},
+  {id:'names', label:'All names', how:'Spell 100% on every class roll (Beta Psi back to Beta Sigma), plus every flashcard solid (Knew it twice in a row)', val:n=>[ROLLS.filter(r=>rollBest(n,r.cls)===100).length+Object.values(S.drill[n]||{}).filter(x=>x.last==='ok'&&(x.streak||0)>=2).length, ROLLS.length+S.cards.length]},
   {id:'quiz', label:'Quiz 100%', how:'100% on every filled-in official question (Q1–19)', val:n=>officialQuiz(n)}]};
 function officialQuiz(n){ const set=qSets().find(x=>x.id==='official'); if(!set) return [0,0]; const xs=qItems(set); return [xs.filter(x=>qBest(n,set.id,x.id)===100).length, xs.length]; }
 function msLeft(){ const d=Math.round((new Date(MILESTONES.by+'T12:00:00')-new Date(today()+'T12:00:00'))/864e5); return d>1?d+' days left':d===1?'1 day left':d===0?'due today':'past due'; }
@@ -833,13 +833,35 @@ let qz={phase:'pick', mode:'order', set:null, run:[], i:0, res:{}, input:'', g:n
 function qStart(set, mode){
   let xs=qItems(set); if(mode==='missed') xs=xs.filter(x=>(qBest(me,set.id,x.id)||0)<100); if(mode==='shuffle') xs=shuffle(xs.slice());
   if(!xs.length){ toast(mode==='missed'?'Nothing missed. Every question is at 100%.':'No questions in this set yet.'); return; }
-  qz=Object.assign(qz,{phase:'ask', set:set.id, run:xs, i:0, res:{}, input:'', g:null}); renderQuizzes(); setTimeout(()=>{ const t=quizEl.querySelector('#qa'); if(t) t.focus(); },50);
+  // the official questions are taken like the real quiz: all on one page, graded together at the end
+  const test=set.id==='official';
+  qz=Object.assign(qz,{phase:test?'test':'ask', set:set.id, run:xs, i:0, res:{}, input:'', g:null, ans:{}, grades:{}}); renderQuizzes(); setTimeout(()=>{ const t=quizEl.querySelector(test?'[data-ta]':'#qa'); if(t) t.focus(); },50);
 }
 const tokHtml = (toks, ok) => toks.map((w,i)=>`<span class="tk ${ok[i]?'ok':'miss'}">${esc(w)}</span>`).join(' ').replace(/ (<span class="tk [a-z]+">[,.;:!?)]<\/span>)/g,'$1');
 function renderQuizzes(){
   const sets=qSets(), set=sets.find(x=>x.id===qz.set), pcp=isPCP();
   if(!S.quiz){ quizEl.innerHTML='<div class="reveal" style="margin-top:14px">The question bank isn\'t set up yet.</div>'; return; }
   if(qz.phase==='edit'&&set) return renderQuizEdit(set);
+  if((qz.phase==='test'||qz.phase==='tested')&&set){
+    const done=qz.phase==='tested', vals=Object.values(qz.grades).map(g=>g.pct), avg=vals.length?Math.round(vals.reduce((a,b)=>a+b,0)/vals.length):0, perfect=vals.filter(v=>v===100).length;
+    quizEl.innerHTML=`<div class="ctrl" style="justify-content:space-between;align-items:center"><span class="status" style="margin:0">${esc(set.title)} · ${qz.run.length} questions</span><button class="small" id="qback">Back to sets</button></div>
+      ${done?`<div class="editor"><div class="big">${avg}%<small> · ${perfect} of ${qz.run.length} perfect · 90% to pass</small></div><div class="status" id="qlog">Saving…</div></div>`:''}
+      ${qz.run.map((it,k)=>{ const g=qz.grades[it.id]; return `<div class="editor"><h2 class="qq">${k+1}. ${esc(it.q)}</h2>
+        <div class="field"><textarea data-ta="${esc(it.id)}" rows="${it.a.length>120?5:2}" ${done?'readonly':''}>${esc(qz.ans[it.id]||'')}</textarea></div>
+        ${g?`<div class="big" style="font-size:20px">${g.pct}%</div>${g.pct<100?`<div class="passage" style="margin-top:6px">${tokHtml(qtoks(g.ans),g.ok)}</div>`:''}`:''}</div>`; }).join('')}
+      <div class="ctrl">${done?`${perfect<qz.run.length?'<button class="btn primary" id="qretry">Retake missed</button>':''}<button class="btn" id="qagain">Retake all</button>`:'<button class="btn primary" id="qcheck">Check all</button>'}</div>
+      ${done?'<div class="legend"><span class="tk ok">green</span> matched <span class="tk miss">red</span> missed</div>':''}`;
+    quizEl.querySelector('#qback').onclick=()=>{ qz.phase='pick'; renderQuizzes(); };
+    quizEl.querySelectorAll('[data-ta]').forEach(t=>t.oninput=()=>{ qz.ans[t.dataset.ta]=t.value; });
+    const ck=quizEl.querySelector('#qcheck'); if(ck) ck.onclick=async()=>{ if(!me){ askName(); return; }
+      const blank=qz.run.filter(it=>!(qz.ans[it.id]||'').trim()).length; if(blank&&!confirm(`${blank} question${blank===1?' is':'s are'} blank. Check anyway?`)) return;
+      qz.run.forEach(it=>{ qz.grades[it.id]=qGrade(it, qz.ans[it.id]||''); }); qz.phase='tested'; renderQuizzes(); scrollTo(0,0);
+      const at=when(), ok=await commit(null, st=>{ qz.run.forEach(it=>st.recitals.unshift({who:me,at,passage:`quiz:${set.id}:${it.id}`,pct:qz.grades[it.id].pct})); });
+      const l=quizEl.querySelector('#qlog'); if(l) l.textContent=ok?'Saved to your record.':'Not saved (see message).'; };
+    const rt=quizEl.querySelector('#qretry'); if(rt) rt.onclick=()=>qStart(set,'missed');
+    const ag=quizEl.querySelector('#qagain'); if(ag) ag.onclick=()=>qStart(set,qz.mode==='missed'?'order':qz.mode);
+    return;
+  }
   if(qz.phase==='ask'||qz.phase==='checked'){
     const it=qz.run[qz.i], g=qz.g;
     quizEl.innerHTML=`<div class="ctrl" style="justify-content:space-between;align-items:center"><span class="status" style="margin:0">${esc(set.title)} · question ${qz.i+1} of ${qz.run.length}</span><button class="small" id="qback">Back to sets</button></div>
@@ -939,7 +961,7 @@ function renderRoll(){
       <div class="field"><label>VPPE</label><input id="rv" autocomplete="off" autocapitalize="words" value="${esc(d.v)}"></div>
       <div class="field"><label>Members (one per line, in order)</label><textarea id="rm" autocapitalize="words" style="min-height:220px">${esc(d.m)}</textarea></div>
       <div class="ctrl"><button class="btn primary" id="rcheck">Check it</button></div>
-      <div class="status">Full official names, in order. Capitals and accents don't matter; spelling, punctuation and order do. Target: 100% on all four classes.</div></div>
+      <div class="status">Full official names, in order. Capitals and accents don't matter; spelling, punctuation and order do. Target: 100% on every class.</div></div>
     <div id="rres"></div><div id="rboard"></div>`;
   rollEl.querySelector('#rback').onclick=()=>setMode('quizzes');
   rollEl.querySelectorAll('[data-ri]').forEach(b=>b.onclick=()=>{ rIdx=+b.dataset.ri; renderRoll(); });
@@ -965,7 +987,7 @@ function renderRollBoard(){
 }
 
 // ---------- error safety net ----------
-function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-07c'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
+function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-07d'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
   b.innerHTML='<span style="flex:1;word-break:break-word">Something broke: '+esc(msg)+'</span><button onclick="location.reload()" style="border:0;background:#fff;color:#B23A3A;border-radius:8px;padding:6px 10px;font:600 13px \'Public Sans\',sans-serif;cursor:pointer">Reload</button><button onclick="document.getElementById(\'errbar\').remove()" style="border:0;background:transparent;color:#fff;font-size:18px;cursor:pointer">×</button>'; }
 window.addEventListener('error', e=>{ showErr((e.message||'error')+' @'+(e.lineno||'?')); try{ render(); }catch(x){} });
 window.addEventListener('unhandledrejection', e=>{ showErr('async: '+((e.reason&&e.reason.message)||e.reason||'error')); });
