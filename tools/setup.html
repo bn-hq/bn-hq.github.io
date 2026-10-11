@@ -129,7 +129,11 @@ $('makeCards').onclick = async () => {
   const maxOrder = Object.values(cards).reduce((m, c) => Math.max(m, c.order ?? -1), -1);
   let n = 0, pics = 0;
   for (const b of toMake) {
-    const photo = b.copyFrom ? `${slug(b.full)}-${slug(b.cls)}` : slug(b.full);
+    // match the ids already in use: short name, with a vppe- prefix on the VPPE's card
+    // ("abhinav-vallur", "vppe-benjamin-tausner"). A brother who holds both gets the
+    // bare id for their own class and keeps the vppe- one for the class they serve.
+    let photo = (b.role === 'VPPE' ? 'vppe-' : '') + slug(shortName(b.full));
+    if (cards[photo]) photo = `${slug(shortName(b.full))}-${slug(b.cls)}`;
     const card = { photo, name: shortName(b.full), full: b.full, cls: b.cls, order: maxOrder + 1 + n, extra: {} };
     if (!(await put('cards/' + encodeURIComponent(photo), card)).ok) continue;
     cards[photo] = card; n++;
