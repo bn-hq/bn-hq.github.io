@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pledge HQ · setup</title>
+<style>
+  :root{--ink:#1b1b1f;--ink2:#6b6b76;--line:#e2e2e8;--panel:#fff;--bg:#f6f6f8;--gold:#C9A227;--gold2:#FBF3D5;--ok:#1f7a4d;--bad:#B23A3A}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+  .wrap{max-width:860px;margin:0 auto;padding:24px 16px 80px}
+  h1{font-size:24px;margin:0 0 4px} h2{font-size:17px;margin:0 0 10px}
+  .sub{color:var(--ink2);margin:0 0 24px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:18px}
+  .btn{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:10px;padding:10px 16px;font:600 14px inherit;cursor:pointer}
+  .btn.primary{background:var(--gold2);border-color:var(--gold)}
+  .btn:disabled{opacity:.45;cursor:default}
+  .note{color:var(--ink2);font-size:13px;margin-top:10px}
+  .ok{color:var(--ok);font-weight:600} .bad{color:var(--bad);font-weight:600}
+  ul.list{list-style:none;padding:0;margin:10px 0 0;max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:10px}
+  ul.list li{padding:7px 12px;border-bottom:1px solid var(--line);font-size:13px;display:flex;gap:10px;align-items:center}
+  ul.list li:last-child{border-bottom:0}
+  .cls{color:var(--ink2);flex:none;width:90px;font-size:12px}
+  #drop{border:2px dashed var(--line);border-radius:12px;padding:34px 16px;text-align:center;color:var(--ink2);background:#fcfcfd}
+  #drop.over{border-color:var(--gold);background:var(--gold2);color:var(--ink)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:12px;margin-top:14px}
+  .b{border:1px solid var(--line);border-radius:10px;padding:10px;background:#fcfcfd;text-align:center}
+  .b img,.b .ph{width:84px;height:84px;border-radius:9px;object-fit:cover;display:block;margin:0 auto 7px;background:var(--gold2);
+    color:#4B2A7B;font-weight:700;font-size:26px;line-height:84px}
+  .b .nm{font-size:13px;font-weight:600;line-height:1.25} .b .cl{font-size:11px;color:var(--ink2);margin-bottom:7px}
+  .b.has{border-color:var(--ok)} .b input[type=file]{width:100%;font-size:11px}
+  .hide{display:none}
+  code{background:var(--gold2);padding:1px 5px;border-radius:4px;font-size:13px}
+  ol{padding-left:20px} ol li{margin-bottom:6px}
+</style>
+</head><body><div class="wrap">
+
+<h1>Pledge HQ setup</h1>
+<p class="sub">Creates missing flashcards and uploads headshots. Changes go live for the whole class immediately.</p>
+
+<div class="panel">
+  <h2>1 · Connect</h2>
+  <button class="btn primary" id="load">Load from the database</button>
+  <div class="note" id="loadnote">Nothing loaded yet.</div>
+</div>
+
+<div class="panel hide" id="cardPanel">
+  <h2>2 · Missing flashcards</h2>
+  <div id="cardSummary"></div>
+  <ul class="list" id="cardList"></ul>
+  <p class="note">A brother who is VPPE of a younger class is filed under that class, so they get a second card under their own
+     pledge class too — appearing in both decks and counting twice. Running this again creates nothing.</p>
+  <p><button class="btn primary" id="makeCards">Create the cards</button></p>
+</div>
+
+<div class="panel hide" id="photoPanel">
+  <h2>3 · Headshots</h2>
+  <p class="note" style="margin-top:0">Save the headshots to a folder first — from LinkedIn, the chapter site, wherever you
+     get them. Name each file after the brother (<code>Max Chen.jpg</code>) and I'll match them automatically. Anything that
+     doesn't match, use the picker under their name.</p>
+  <div id="drop">Drop headshot files here, or <label style="text-decoration:underline;cursor:pointer">choose files<input type="file" id="pick" accept="image/*" multiple class="hide"></label></div>
+  <div id="matchnote" class="note"></div>
+  <div class="grid" id="grid"></div>
+  <p style="margin-top:16px"><button class="btn primary" id="upload" disabled>Upload headshots</button>
+     <span class="note" id="upnote"></span></p>
+</div>
+
+<script>
+const DB = 'https://pledge-675b2-default-rtdb.firebaseio.com';
+const CLASSES = ['Beta Tau', 'Beta Sigma'];
+const MAXDIM = 400, QUALITY = 0.82;
+
+const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+  .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const slug = s => norm(s).replace(/ /g, '-');
+const shortName = full => { const w = full.split(/\s+/); return w.length < 3 ? full : w[0] + ' ' + w[w.length - 1]; };
+const initials = n => n.split(/[\s-]+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('');
+const $ = id => document.getElementById(id);
+const getJSON = async p => (await fetch(`${DB}/${p}.json?_=${Date.now()}`, { cache: 'no-store' })).json();
+const put = (p, body) => fetch(`${DB}/${p}.json`, { method: 'PUT', body: JSON.stringify(body) });
+
+let SEED = null, cards = {}, havePhoto = new Set(), toMake = [], needPhoto = [], staged = new Map();
+
+$('load').onclick = async () => {
+  $('load').disabled = true; $('loadnote').textContent = 'Loading…';
+  try {
+    // the roll lives in the app page, so names here can never drift from the roll
+    const html = await (await fetch('../index.html', { cache: 'no-store' })).text();
+    SEED = JSON.parse(html.match(/<script id="seed"[^>]*>([\s\S]*?)<\/script>/)[1]);
+    cards = (await getJSON('cards')) || {};
+    havePhoto = new Set(Object.keys((await getJSON('photos?shallow=true')) || {}));
+    buildPlan();
+    $('loadnote').innerHTML = `<span class="ok">Connected.</span> ${Object.keys(cards).length} cards in the database, ${havePhoto.size} with a headshot.`;
+    $('cardPanel').classList.remove('hide'); $('photoPanel').classList.remove('hide');
+  } catch (e) {
+    $('loadnote').innerHTML = `<span class="bad">Couldn't load: ${e.message}.</span> Make sure you opened this through the local address, not by double-clicking the file.`;
+    $('load').disabled = false;
+  }
+};
+
+function buildPlan() {
+  const held = new Map();
+  for (const c of Object.values(cards)) {
+    for (const n of new Set([norm(c.full), norm(c.name)])) {
+      if (!n) continue;
+      if (!held.has(n)) held.set(n, []);
+      held.get(n).push(c);
+    }
+  }
+  toMake = [];
+  for (const cls of CLASSES) {
+    const r = (SEED.rolls || []).find(x => x.cls === cls); if (!r) continue;
+    const roster = [{ full: r.vppe, role: 'VPPE' },
+      ...r.members.map((m, i) => ({ full: m.replace(/^\*/, ''), role: `#${i + 1}` }))];
+    for (const b of roster) {
+      const mine = held.get(norm(b.full)) || [];
+      if (mine.some(c => norm(c.cls) === norm(cls))) continue;
+      toMake.push({ ...b, cls, copyFrom: mine[0] || null });
+    }
+  }
+  $('cardSummary').innerHTML = toMake.length
+    ? `<b>${toMake.length}</b> brother${toMake.length === 1 ? '' : 's'} in ${CLASSES.join(' and ')} ${toMake.length === 1 ? 'has' : 'have'} no flashcard.`
+    : `<span class="ok">All ${CLASSES.join(' and ')} brothers already have flashcards.</span>`;
+  $('cardList').innerHTML = toMake.map(b => `<li><span class="cls">${b.cls} ${b.role}</span><span>${shortName(b.full)}</span>`
+    + (b.copyFrom ? `<span style="color:var(--ink2);font-size:12px">2nd card · also ${b.copyFrom.cls}</span>` : '') + `</li>`).join('');
+  $('makeCards').disabled = !toMake.length;
+  buildPhotoGrid();
+}
+
+$('makeCards').onclick = async () => {
+  $('makeCards').disabled = true; $('cardSummary').textContent = 'Creating…';
+  const maxOrder = Object.values(cards).reduce((m, c) => Math.max(m, c.order ?? -1), -1);
+  let n = 0, pics = 0;
+  for (const b of toMake) {
+    // match the ids already in use: short name, with a vppe- prefix on the VPPE's card
+    // ("abhinav-vallur", "vppe-benjamin-tausner"). A brother who holds both gets the
+    // bare id for their own class and keeps the vppe- one for the class they serve.
+    let photo = (b.role === 'VPPE' ? 'vppe-' : '') + slug(shortName(b.full));
+    if (cards[photo]) photo = `${slug(shortName(b.full))}-${slug(b.cls)}`;
+    const card = { photo, name: shortName(b.full), full: b.full, cls: b.cls, order: maxOrder + 1 + n, extra: {} };
+    if (!(await put('cards/' + encodeURIComponent(photo), card)).ok) continue;
+    cards[photo] = card; n++;
+    // a card's id doubles as its headshot key, so a second card needs the photo copied over
+    if (b.copyFrom && b.copyFrom.photo && havePhoto.has(b.copyFrom.photo)) {
+      const src = await getJSON('photos/' + encodeURIComponent(b.copyFrom.photo));
+      if (src) { await put('photos/' + encodeURIComponent(photo), src); havePhoto.add(photo); pics++; }
+    }
+  }
+  await bump('version');
+  if (pics) await bump('photosVersion');
+  $('cardSummary').innerHTML = `<span class="ok">Created ${n} card${n === 1 ? '' : 's'}${pics ? `, copied ${pics} headshot${pics === 1 ? '' : 's'}` : ''}.</span> The class decks and the Tau / Sigma buttons appear after a reload of the app.`;
+  $('cardList').innerHTML = ''; toMake = [];
+  buildPhotoGrid();
+};
+
+async function bump(path) { const v = (await getJSON(path)) || 0; await put(path, (+v || 0) + 1); }
+
+function buildPhotoGrid() {
+  needPhoto = Object.values(cards)
+    .filter(c => CLASSES.some(x => norm(c.cls) === norm(x)))
+    .sort((a, b) => (a.cls || '').localeCompare(b.cls || '') || (a.order ?? 0) - (b.order ?? 0));
+  $('grid').innerHTML = needPhoto.map((c, i) => {
+    const has = havePhoto.has(c.photo);
+    return `<div class="b ${has ? 'has' : ''}" data-i="${i}">
+      <div class="ph" data-ph>${initials(c.name)}</div>
+      <div class="nm">${c.name}</div><div class="cl">${c.cls}${has ? ' · has one' : ''}</div>
+      <input type="file" accept="image/*" data-one="${i}"></div>`;
+  }).join('');
+  $('grid').querySelectorAll('[data-one]').forEach(inp => inp.onchange = async e => {
+    const f = e.target.files[0]; if (f) await stage(needPhoto[+inp.dataset.one], f);
+  });
+  refreshUpload();
+}
+
+const drop = $('drop');
+['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => handleFiles([...e.dataTransfer.files]));
+$('pick').onchange = e => handleFiles([...e.target.files]);
+
+async function handleFiles(files) {
+  const imgs = files.filter(f => /^image\//.test(f.type));
+  const hit = [], miss = [];
+  for (const f of imgs) {
+    const base = norm(f.name.replace(/\.[a-z0-9]+$/i, ''));
+    const c = needPhoto.find(c => norm(c.full) === base || norm(c.name) === base)
+      || needPhoto.find(c => { const w = norm(c.full).split(' '); return base === `${w[0]} ${w[w.length - 1]}`; });
+    if (c) { await stage(c, f); hit.push(f.name); } else miss.push(f.name);
+  }
+  $('matchnote').innerHTML = `Matched <b>${hit.length}</b> of ${imgs.length}.`
+    + (miss.length ? ` Couldn't place: ${miss.map(m => `<code>${m}</code>`).join(' ')} — use the picker under the right name.` : '');
+}
+
+async function stage(card, file) {
+  const uri = await shrink(file);
+  staged.set(card.photo, uri);
+  const i = needPhoto.indexOf(card);
+  const box = $('grid').querySelector(`[data-i="${i}"]`);
+  if (box) { box.classList.add('has'); box.querySelector('[data-ph]').outerHTML = `<img src="${uri}" alt="" data-ph>`; }
+  refreshUpload();
+}
+
+// shrink before upload: the whole photo set is downloaded and cached by every phone that opens the app
+function shrink(file) {
+  return new Promise((res, rej) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const s = Math.min(1, MAXDIM / Math.max(img.width, img.height));
+      const cv = document.createElement('canvas');
+      cv.width = Math.round(img.width * s); cv.height = Math.round(img.height * s);
+      cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+      URL.revokeObjectURL(url);
+      res(cv.toDataURL('image/jpeg', QUALITY));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('not a readable image: ' + file.name)); };
+    img.src = url;
+  });
+}
+
+function refreshUpload() {
+  const kb = Math.round([...staged.values()].reduce((n, u) => n + u.length * 0.75, 0) / 1024);
+  $('upload').disabled = !staged.size;
+  $('upload').textContent = staged.size ? `Upload ${staged.size} headshot${staged.size === 1 ? '' : 's'}` : 'Upload headshots';
+  $('upnote').textContent = staged.size ? `${kb} KB total, ready to send.` : '';
+}
+
+$('upload').onclick = async () => {
+  $('upload').disabled = true; $('upnote').textContent = 'Uploading…';
+  let n = 0;
+  for (const [photo, uri] of staged) {
+    if ((await put('photos/' + encodeURIComponent(photo), uri)).ok) { havePhoto.add(photo); n++; }
+  }
+  await bump('photosVersion');
+  staged.clear(); refreshUpload();
+  $('upnote').innerHTML = `<span class="ok">Uploaded ${n}.</span> Everyone's app refreshes its photos automatically.`;
+};
+</script>
+</div></body></html>
