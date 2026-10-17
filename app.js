@@ -124,7 +124,12 @@ function rollIndex(c){
   for(const f of [nkey(c.full), nkey(c.name)]){ if(!f) continue; if(f===vp) return 0; const i=ms.indexOf(f); if(i>=0) return i+1; }
   return 998;
 }
-const byRoll = (a,b) => clsRank(a.cls)-clsRank(b.cls) || rollIndex(a)-rollIndex(b) || a.name.localeCompare(b.name);
+// flashcard deck follows the Fall 2026 Pledge Classes PDF: newest class first (Psi, Chi, Phi … Pi), each class in the PDF's member order; our own class last
+const pdfRank = cls => { const r=clsRank(cls); return /^Beta Omega/.test(String(cls||''))||r===99 ? 100+r : 50-r; };
+const byRoll = (a,b) => pdfRank(a.cls)-pdfRank(b.cls) || rollIndex(a)-rollIndex(b) || a.name.localeCompare(b.name);
+// the PDF marks each class's PCP with a *
+const isPCPStar = c => { const r=(SEED.rolls||[]).find(x=>String(c.cls||'').startsWith(x.cls)); if(!r) return false; const f=[nkey(c.full),nkey(c.name)].filter(Boolean); return r.members.some(m=>m.startsWith('*')&&f.includes(nkey(m.slice(1)))); };
+const starName = c => (isPCPStar(c)?'*':'')+c.name;
 // where a brother sits in his class roll, for the Roll order deck ("Beta Upsilon · #3 of 14")
 function rollLabel(c){
   const r=(SEED.rolls||[]).find(x=>String(c.cls||'').startsWith(x.cls)), i=rollIndex(c);
@@ -136,8 +141,8 @@ function pool(){
   return p.sort(byRoll);
 }
 function shuffle(a){ for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; }
-// deck order: 'az' (by name, default), 'smart' (weighted review), 'roll' (class by class, in the order the roll is called)
-let fcOrd='az'; try{ const v=localStorage.getItem('bn-fc2'); if(v==='roll'||v==='order') fcOrd='roll'; else if(v==='smart') fcOrd='smart'; }catch(e){}
+// deck order: 'roll' (PDF order, default), 'az' (by name), 'smart' (weighted review)
+let fcOrd='roll'; try{ const v=localStorage.getItem('bn-fc3'); if(v==='az') fcOrd='az'; else if(v==='smart') fcOrd='smart'; }catch(e){}
 function resetOrder(){
   const p=pool(); // pool() is already roll-sorted
   order = fcOrd==='az' ? p.sort((a,b)=>a.name.localeCompare(b.name)) : fcOrd==='smart'&&me ? smartOrder(p) : p;
@@ -194,7 +199,7 @@ function renderCard(){
     const rows=FIELDS.filter(([k])=>k!=='full').map(([k,l])=>[l,c[k]]);
     for(const [k,v] of Object.entries(c.extra||{})) rows.push([k,v]);
     rows.push(['LinkedIn', c.li?`<a href="https://www.linkedin.com/in/${esc(c.li)}/" target="_blank" rel="noopener">linkedin.com/in/${esc(c.li)}</a>`:'', true]);
-    cardEl.innerHTML=`<div class="back"><img src="${IMG(c.photo)}" alt=""><div><h2>${esc(c.name)}</h2>${c.full?`<div class="fullname"><small>Full name (official)</small>${esc(c.full)}</div>`:''}${c.alias?`<div class="alias">${esc(c.alias)}</div>`:''}<span class="tag">${esc(c.cls)}</span></div><div class="facts">${rows.map(([k,v,raw])=>`<div><b>${esc(k)}</b><span>${v?(raw?v:esc(v)):'<span class="empty">not filled in yet</span>'}</span></div>`).join('')}</div>${sigHtml(c)}</div>`;
+    cardEl.innerHTML=`<div class="back"><img src="${IMG(c.photo)}" alt=""><div><h2>${esc(starName(c))}</h2>${c.full?`<div class="fullname"><small>Full name (official)</small>${esc(c.full)}</div>`:''}${c.alias?`<div class="alias">${esc(c.alias)}</div>`:''}<span class="tag">${esc(c.cls)}</span></div><div class="facts">${rows.map(([k,v,raw])=>`<div><b>${esc(k)}</b><span>${v?(raw?v:esc(v)):'<span class="empty">not filled in yet</span>'}</span></div>`).join('')}</div>${sigHtml(c)}</div>`;
     bindSig(cardEl, ()=>{ order=order.map(x=>S.cards.find(y=>y.photo===x.photo)||x); renderCard(); });
   }
   const rt=document.getElementById('rate3'); rt.hidden=!flipped;
@@ -211,7 +216,7 @@ cardEl.addEventListener('keydown', e=>{ if(e.target!==cardEl) return; if(e.key==
 document.getElementById('next').onpointerdown=e=>{ if(e.button) return; if(!order.length) return; idx=(idx+1)%order.length; flipped=false; editing=false; renderCard(); };
 document.getElementById('prev').onpointerdown=e=>{ if(e.button) return; if(!order.length) return; idx=(idx-1+order.length)%order.length; flipped=false; editing=false; renderCard(); };
 document.getElementById('rate3').addEventListener('click', e=>{ const b=e.target.closest('[data-rate]'); if(b) rateCard(+b.dataset.rate); });
-const setFcOrd = v => { if(fcOrd===v) return; saveDrill(); fcOrd=v; try{ localStorage.setItem('bn-fc2', v); }catch(e){} resetOrder(); render(); };
+const setFcOrd = v => { if(fcOrd===v) return; saveDrill(); fcOrd=v; try{ localStorage.setItem('bn-fc3', v); }catch(e){} resetOrder(); render(); };
 document.getElementById('fcord').addEventListener('click', e=>{ const b=e.target.closest('[data-o]'); if(b) setFcOrd(b.dataset.o); });
 document.getElementById('star').onclick=()=>{ const c=order[idx]; if(!c) return; if(stars[c.photo]) delete stars[c.photo]; else stars[c.photo]=1; saveStars(); renderCard(); };
 document.getElementById('edit').onclick=()=>{ if(!order[idx]) return; if(!me){ askName(); return; } openInDir(order[idx].photo, true); };
@@ -301,7 +306,7 @@ function renderDirDetail(){
   const c=S.cards.find(x=>x.photo===dirOpen); if(!c) return '';
   const rows=FIELDS.filter(([k])=>k!=='full').map(([k,l])=>[l,c[k]]).concat(Object.entries(c.extra||{}));
   rows.push(['LinkedIn', c.li?`<a href="https://www.linkedin.com/in/${esc(c.li)}/" target="_blank" rel="noopener">linkedin.com/in/${esc(c.li)}</a>`:'', true]);
-  return `<div id="dirdetail" class="card" style="margin-top:12px;cursor:default"><div class="back"><img src="${IMG(c.photo)}" alt=""><div><h2>${esc(c.name)}</h2>${c.full?`<div class="fullname"><small>Full name (official)</small>${esc(c.full)}</div>`:''}${c.alias?`<div class="alias">${esc(c.alias)}</div>`:''}<span class="tag">${esc(c.cls)}</span></div><div class="facts">${rows.map(([k,v,raw])=>`<div><b>${esc(k)}</b><span>${v?(raw?v:esc(v)):'<span class="empty">not filled in yet</span>'}</span></div>`).join('')}</div>${sigHtml(c)}</div></div>
+  return `<div id="dirdetail" class="card" style="margin-top:12px;cursor:default"><div class="back"><img src="${IMG(c.photo)}" alt=""><div><h2>${esc(starName(c))}</h2>${c.full?`<div class="fullname"><small>Full name (official)</small>${esc(c.full)}</div>`:''}${c.alias?`<div class="alias">${esc(c.alias)}</div>`:''}<span class="tag">${esc(c.cls)}</span></div><div class="facts">${rows.map(([k,v,raw])=>`<div><b>${esc(k)}</b><span>${v?(raw?v:esc(v)):'<span class="empty">not filled in yet</span>'}</span></div>`).join('')}</div>${sigHtml(c)}</div></div>
     <div class="ctrl"><button class="btn" id="dirclose">Close</button><button class="btn primary" id="diredit">${dirEdit?'Close editor':'✎ Edit this brother'}</button></div><div id="direditor" ${dirEdit?'':'hidden'}></div>`;
 }
 
@@ -1016,7 +1021,7 @@ function renderRollBoard(){
 }
 
 // ---------- error safety net ----------
-function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-16a'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
+function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-16b'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
   b.innerHTML='<span style="flex:1;word-break:break-word">Something broke: '+esc(msg)+'</span><button onclick="location.reload()" style="border:0;background:#fff;color:#B23A3A;border-radius:8px;padding:6px 10px;font:600 13px \'Public Sans\',sans-serif;cursor:pointer">Reload</button><button onclick="document.getElementById(\'errbar\').remove()" style="border:0;background:transparent;color:#fff;font-size:18px;cursor:pointer">×</button>'; }
 window.addEventListener('error', e=>{ showErr((e.message||'error')+' @'+(e.lineno||'?')); try{ render(); }catch(x){} });
 window.addEventListener('unhandledrejection', e=>{ showErr('async: '+((e.reason&&e.reason.message)||e.reason||'error')); });
