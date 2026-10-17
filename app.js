@@ -141,11 +141,11 @@ function pool(){
   return p.sort(byRoll);
 }
 function shuffle(a){ for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; }
-// deck order: 'roll' (PDF order, default), 'az' (by name), 'smart' (weighted review)
-let fcOrd='roll'; try{ const v=localStorage.getItem('bn-fc3'); if(v==='az') fcOrd='az'; else if(v==='smart') fcOrd='smart'; }catch(e){}
+// deck order: 'roll' (PDF order, default) or 'az' (by name)
+let fcOrd='roll'; try{ if(localStorage.getItem('bn-fc3')==='az') fcOrd='az'; }catch(e){}
 function resetOrder(){
   const p=pool(); // pool() is already roll-sorted
-  order = fcOrd==='az' ? p.sort((a,b)=>a.name.localeCompare(b.name)) : fcOrd==='smart'&&me ? smartOrder(p) : p;
+  order = fcOrd==='az' ? p.sort((a,b)=>a.name.localeCompare(b.name)) : p;
   idx = 0; flipped=false; editing=false; document.getElementById('editor').hidden=true;
 }
 const when = () => new Date().toISOString();
@@ -194,7 +194,7 @@ function renderCard(){
   document.querySelectorAll('#fcord [data-o]').forEach(b=>b.setAttribute('aria-pressed', b.dataset.o===fcOrd));
   if(!c){ cardEl.innerHTML='<div style="padding:40px;text-align:center;color:var(--ink2)">Nothing here. Star some brothers first.</div>'; document.getElementById('editor').hidden=true; return; }
   if(!flipped){
-    cardEl.innerHTML=`<div class="front"><img src="${IMG(c.photo)}" alt="brother photo"><div class="hint">Tap to reveal · ${idx+1} / ${order.length}</div></div>`;
+    cardEl.innerHTML=`<div class="front"><img src="${IMG(c.photo)}" alt="brother photo"><div class="hint">Tap to reveal</div></div>`;
   } else {
     const rows=FIELDS.filter(([k])=>k!=='full').map(([k,l])=>[l,c[k]]);
     for(const [k,v] of Object.entries(c.extra||{})) rows.push([k,v]);
@@ -202,10 +202,7 @@ function renderCard(){
     cardEl.innerHTML=`<div class="back"><img src="${IMG(c.photo)}" alt=""><div><h2>${esc(starName(c))}</h2>${c.full?`<div class="fullname"><small>Full name (official)</small>${esc(c.full)}</div>`:''}${c.alias?`<div class="alias">${esc(c.alias)}</div>`:''}<span class="tag">${esc(c.cls)}</span></div><div class="facts">${rows.map(([k,v,raw])=>`<div><b>${esc(k)}</b><span>${v?(raw?v:esc(v)):'<span class="empty">not filled in yet</span>'}</span></div>`).join('')}</div>${sigHtml(c)}</div>`;
     bindSig(cardEl, ()=>{ order=order.map(x=>S.cards.find(y=>y.photo===x.photo)||x); renderCard(); });
   }
-  const rt=document.getElementById('rate3'); rt.hidden=!flipped;
-  if(flipped) rt.innerHTML=[[1,"Didn't know"],[3,'Partly'],[5,'Knew it']].map(([r,l],i)=>`<button class="btn r${r}" data-rate="${r}"><b>${i+1}</b> ${l}</button>`).join('');
-  const p=pool(), solid=p.filter(x=>isSolid(recOf(x.photo))).length, rc=recOf(c.photo);
-  document.getElementById('fcprog').innerHTML = (me ? `Learned ${solid} of ${p.length}${rc.r?` · last time: ${rc.r===5?'knew it':rc.r>=3?'partly':"didn't know"}`:''}` : 'Pick your name to save your progress.') + (fcOrd==='roll'?` · ${esc(rollLabel(c))}`:'');
+  document.getElementById('fcprog').innerHTML = `${idx+1} of ${order.length}` + (fcOrd==='roll'?` · ${esc(rollLabel(c))}`:'');
   const s=document.getElementById('star'); const on=!!stars[c.photo]; s.setAttribute('aria-pressed',on); s.textContent=on?'★ Starred':'☆ Star';
   document.getElementById('editor').hidden=true;
 }
@@ -215,14 +212,12 @@ cardEl.addEventListener('click', e=>{ if(e.target.closest('a,.sig')) return; e.p
 cardEl.addEventListener('keydown', e=>{ if(e.target!==cardEl) return; if(e.key===' '||e.key==='Enter'){e.preventDefault();flipped=!flipped;renderCard();} });
 document.getElementById('next').onpointerdown=e=>{ if(e.button) return; if(!order.length) return; idx=(idx+1)%order.length; flipped=false; editing=false; renderCard(); };
 document.getElementById('prev').onpointerdown=e=>{ if(e.button) return; if(!order.length) return; idx=(idx-1+order.length)%order.length; flipped=false; editing=false; renderCard(); };
-document.getElementById('rate3').addEventListener('click', e=>{ const b=e.target.closest('[data-rate]'); if(b) rateCard(+b.dataset.rate); });
 const setFcOrd = v => { if(fcOrd===v) return; saveDrill(); fcOrd=v; try{ localStorage.setItem('bn-fc3', v); }catch(e){} resetOrder(); render(); };
 document.getElementById('fcord').addEventListener('click', e=>{ const b=e.target.closest('[data-o]'); if(b) setFcOrd(b.dataset.o); });
 document.getElementById('star').onclick=()=>{ const c=order[idx]; if(!c) return; if(stars[c.photo]) delete stars[c.photo]; else stars[c.photo]=1; saveStars(); renderCard(); };
 document.getElementById('edit').onclick=()=>{ if(!order[idx]) return; if(!me){ askName(); return; } openInDir(order[idx].photo, true); };
 document.addEventListener('keydown', e=>{ if(mode!=='learn'||view!=='cards'||editing||['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
   if(e.key===' '&&e.target!==cardEl){ e.preventDefault(); flipped=!flipped; renderCard(); return; }
-  if(flipped&&'123'.includes(e.key)&&e.key){ rateCard([1,3,5][+e.key-1]); return; }
   if(e.key==='ArrowRight') document.getElementById('next').onpointerdown({button:0}); if(e.key==='ArrowLeft') document.getElementById('prev').onpointerdown({button:0}); });
 
 // ---------- editor ----------
@@ -255,24 +250,6 @@ function renderEditorInto(ed, c, onDone){
 
 // ---------- drill (self-graded flashcards) ----------
 let dres={}, saveT=null;
-function weight(c){ const x=(S.drill[me]||{})[c.photo]; if(!x) return 3; const r=x.r||(x.last==='ok'?5:x.last==='some'?3:1); const s=x.streak||0; if(r<=1) return 4.5; if(r===2) return 3.5; if(r===3) return 2.5; if(r===4) return 1.4; return s>=4?0.25:s>=2?0.6:1.2; }
-function smartOrder(p){
-  // weighted sample without replacement: missed and never-seen first, solid ones (knew it 2+ in a row) less often
-  const items=p.map(c=>({c,w:weight(c)})), out=[];
-  while(items.length){ const tot=items.reduce((a,b)=>a+b.w,0); let r=Math.random()*tot, i=0; for(;i<items.length;i++){ r-=items[i].w; if(r<=0) break; } out.push(items.splice(Math.min(i,items.length-1),1)[0].c); }
-  return out;
-}
-function recOf(photo){
-  // saved record with this session's unsaved ratings applied, for the progress line
-  let x=Object.assign({},(S.drill[me]||{})[photo]||{}); const r=dres[photo]; if(r){ x.r=r; x.streak=r===5?(x.streak||0)+1:0; x.last=r>=4?'ok':r>=2?'some':'miss'; } return x;
-}
-const isSolid = x => x&&x.last==='ok'&&(x.streak||0)>=2;
-function rateCard(r){
-  const c=order[idx]; if(!c) return; if(!me){ askName(); return; }
-  if(dres[c.photo]){ saveDrill(); } // second rating of the same card in a batch: save the first one before overwriting
-  dres[c.photo]=r; idx=(idx+1)%order.length; flipped=false; renderCard();
-  clearTimeout(saveT); if(Object.keys(dres).length>=5) saveDrill(); else saveT=setTimeout(saveDrill,8000);
-}
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') saveDrill(); });
 function myDrill(){ return (S.drill[me]=S.drill[me]||{}); }
 async function saveDrill(){
@@ -578,7 +555,7 @@ const PACE_START='2026-09-16'; // induction day: informals and milestones are cu
 function pace(done, target, due){ const span=Math.max(1,daysTo(PACE_START,due)-1), gone=Math.min(span,Math.max(0,daysTo(PACE_START,today())-1)), exp=Math.round(target*gone/span); return {exp, ok:done>=exp, frac:gone/span}; }
 const paceTag = pc => pc.ok?'<span class="tag-ok">On pace</span>':'<span class="tag-bad">Behind</span>';
 const MILESTONES={by:'2026-10-11', items:[
-  {id:'names', label:'All names', how:'Spell 100% on every class roll (Beta Psi back to Beta Pi), plus every flashcard solid (Knew it twice in a row)', val:n=>[ROLLS.filter(r=>rollBest(n,r.cls)===100).length+Object.values(S.drill[n]||{}).filter(x=>x.last==='ok'&&(x.streak||0)>=2).length, ROLLS.length+S.cards.length]},
+  {id:'names', label:'All names', how:'Spell 100% on every class roll (Beta Psi back to Beta Pi)', val:n=>[ROLLS.filter(r=>rollBest(n,r.cls)===100).length, ROLLS.length]},
   {id:'quiz', label:'Quiz 100%', how:'100% on every filled-in official question (Q1–25)', val:n=>officialQuiz(n)}]};
 function officialQuiz(n){ const set=qSets().find(x=>x.id==='official'); if(!set) return [0,0]; const xs=qItems(set); return [xs.filter(x=>qBest(n,set.id,x.id)===100).length, xs.length]; }
 function msLeft(){ const d=Math.round((new Date(MILESTONES.by+'T12:00:00')-new Date(today()+'T12:00:00'))/864e5); return d>1?d+' days left':d===1?'1 day left':d===0?'due today':'past due'; }
@@ -632,14 +609,14 @@ function renderAcct(){
     const solid=solidOf(n);
     const spell=ROLLS.map(r=>rollBest(n,r.cls));
     const mine=S.tasks.filter(t=>isFor(t,n)), done=mine.filter(t=>isDone(t,n)).length;
-    const hits=(solid>=total?1:0)+spell.filter(b=>b===100).length+(mine.length&&done===mine.length?1:0);
+    const hits=spell.filter(b=>b===100).length+(mine.length&&done===mine.length?1:0);
     return {n,solid,spell,done,assigned:mine.length,hits};
-  }).sort((a,b)=>b.hits-a.hits||b.solid-a.solid);
+  }).sort((a,b)=>b.hits-a.hits);
   const pctCell=b=>`<td class="n${b===100?' hit':''}">${b===null?'—':b+'%'}</td>`;
-  acctEl.innerHTML=gradesHtml()+milestonesHtml()+`<details class="ogd more" style="margin-top:12px"><summary><h3 class="sec">More detail <small>informals, faces, spell</small></h3></summary>`+informalsHtml()+`<div class="editor" style="margin-top:12px"><h2>Where everyone stands</h2>
-    <div class="status">Green = done. Faces = flashcards you knew twice in a row. Spell = best score per roll.</div>
-    <div style="overflow-x:auto"><table class="lb"><tr><th>Pledge</th><th class="n">Faces</th>${ROLLS.map(r=>`<th class="n">${esc(r.cls.replace('Beta ',''))}</th>`).join('')}<th class="n">Quiz Q1–25</th></tr>
-    ${rows.map(r=>`<tr><td>${esc(r.n.split(' ')[0])}${r.n===me?' <b>(you)</b>':''}</td><td class="n${r.solid>=total?' hit':''}">${r.solid}/${total}</td>${r.spell.map(pctCell).join('')}${(()=>{ const [a,b]=officialQuiz(r.n); return `<td class="n${b&&a===b?' hit':''}">${b?a+'/'+b:'—'}</td>`; })()}</tr>`).join('')}</table></div></div></details>
+  acctEl.innerHTML=gradesHtml()+milestonesHtml()+`<details class="ogd more" style="margin-top:12px"><summary><h3 class="sec">More detail <small>informals, spell</small></h3></summary>`+informalsHtml()+`<div class="editor" style="margin-top:12px"><h2>Where everyone stands</h2>
+    <div class="status">Green = done. Spell = best score per roll.</div>
+    <div style="overflow-x:auto"><table class="lb"><tr><th>Pledge</th>${ROLLS.map(r=>`<th class="n">${esc(r.cls.replace('Beta ',''))}</th>`).join('')}<th class="n">Quiz Q1–25</th></tr>
+    ${rows.map(r=>`<tr><td>${esc(r.n.split(' ')[0])}${r.n===me?' <b>(you)</b>':''}</td>${r.spell.map(pctCell).join('')}${(()=>{ const [a,b]=officialQuiz(r.n); return `<td class="n${b&&a===b?' hit':''}">${b?a+'/'+b:'—'}</td>`; })()}</tr>`).join('')}</table></div></div></details>
 `;
 }
 
@@ -1021,7 +998,7 @@ function renderRollBoard(){
 }
 
 // ---------- error safety net ----------
-function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-16b'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
+function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-16c'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
   b.innerHTML='<span style="flex:1;word-break:break-word">Something broke: '+esc(msg)+'</span><button onclick="location.reload()" style="border:0;background:#fff;color:#B23A3A;border-radius:8px;padding:6px 10px;font:600 13px \'Public Sans\',sans-serif;cursor:pointer">Reload</button><button onclick="document.getElementById(\'errbar\').remove()" style="border:0;background:transparent;color:#fff;font-size:18px;cursor:pointer">×</button>'; }
 window.addEventListener('error', e=>{ showErr((e.message||'error')+' @'+(e.lineno||'?')); try{ render(); }catch(x){} });
 window.addEventListener('unhandledrejection', e=>{ showErr('async: '+((e.reason&&e.reason.message)||e.reason||'error')); });
