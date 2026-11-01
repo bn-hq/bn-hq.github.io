@@ -851,7 +851,7 @@ function renderQuizzes(){
   if((qz.phase==='test'||qz.phase==='tested')&&set){
     const done=qz.phase==='tested', vals=Object.values(qz.grades).map(g=>g.pct), avg=vals.length?Math.round(vals.reduce((a,b)=>a+b,0)/vals.length):0, perfect=vals.filter(v=>v===100).length;
     quizEl.innerHTML=`<div class="ctrl" style="justify-content:space-between;align-items:center"><span class="status" style="margin:0">${esc(set.title)} · ${qz.run.length} questions</span><button class="small" id="qback">Back to sets</button></div>
-      ${done?`<div class="editor"><div class="big">${perfect}/${qz.run.length}<small> correct · ${Math.round(100*perfect/qz.run.length)}% · word for word, capitals count · 90% to pass</small></div><div class="status" id="qlog">Saving…</div></div>`:''}
+      ${done?`<div class="editor"><div class="big">${perfect}/${qz.run.length}<small> correct · ${Math.round(100*perfect/qz.run.length)}% · word for word · 90% to pass</small></div><div class="status" id="qlog">Saving…</div></div>`:''}
       ${qz.run.map((it,k)=>{ const g=qz.grades[it.id]; return `<div class="editor"><h2 class="qq">${k+1}. ${esc(it.q)}</h2>
         <div class="field"><textarea data-ta="${esc(it.id)}" rows="${it.a.length>120?5:2}" ${done?'readonly':''}>${esc(qz.ans[it.id]||'')}</textarea></div>
         ${g?`<div class="big" style="font-size:20px;color:${g.pct===100?'var(--ok,#2e7d32)':'var(--bad,#B23A3A)'}">${g.pct===100?'Correct':'Wrong'}</div>${g.pct<100?`<div class="passage" style="margin-top:6px">${tokHtml(qtoks(g.ans),g.ok)}</div>`:''}`:''}</div>`; }).join('')}
@@ -861,7 +861,7 @@ function renderQuizzes(){
     quizEl.querySelectorAll('[data-ta]').forEach(t=>t.oninput=()=>{ qz.ans[t.dataset.ta]=t.value; });
     const ck=quizEl.querySelector('#qcheck'); if(ck) ck.onclick=async()=>{ if(!me){ askName(); return; }
       const blank=qz.run.filter(it=>!(qz.ans[it.id]||'').trim()).length; if(blank&&!confirm(`${blank} question${blank===1?' is':'s are'} blank. Check anyway?`)) return;
-      qz.run.forEach(it=>{ const t=qz.ans[it.id]||'', g=qGrade(it, t); g.pct=qExact(it.a, t)?100:0; qz.grades[it.id]=g; }); // official quiz: word for word (capitals and punctuation count, spacing doesn't) or it's wrong qz.phase='tested'; renderQuizzes(); scrollTo(0,0);
+      qz.run.forEach(it=>{ const t=qz.ans[it.id]||'', g=qGrade(it, t); g.pct=qExact(it.a, t)?100:0; qz.grades[it.id]=g; }); // official quiz: word for word (punctuation counts; capitals and spacing don't) or it's wrong qz.phase='tested'; renderQuizzes(); scrollTo(0,0);
       const at=when(), ok=await commit(null, st=>{ qz.run.forEach(it=>st.recitals.unshift({who:me,at,passage:`quiz:${set.id}:${it.id}`,pct:qz.grades[it.id].pct})); });
       const l=quizEl.querySelector('#qlog'); if(l) l.textContent=ok?'Saved to your record.':'Not saved (see message).'; };
     const rt=quizEl.querySelector('#qretry'); if(rt) rt.onclick=()=>qStart(set,'missed');
@@ -942,7 +942,7 @@ const ROLLS=(SEED.rolls||[]).slice().sort((a,b)=>clsRank(a.cls)-clsRank(b.cls));
 let rIdx=0, rDraft={}, rAZ=false; try{ rAZ=localStorage.getItem('bn-roll-az')==='1'; }catch(e){}
 const nw = w => w.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
 const words = t => String(t||'').replace(/\*/g,'').split(/[\s\-]+/).filter(w=>nw(w));
-const qExact = (ans, typed) => { const n=w=>String(w).replace(/[“”]/g,'"').replace(/[‘’]/g,"'"), A=qtoks(ans).map(n), T=qtoks(typed).map(n); return A.length===T.length && A.every((w,i)=>w===T[i]); };
+const qExact = (ans, typed) => { const n=w=>String(w).replace(/[“”]/g,'"').replace(/[‘’]/g,"'").toLowerCase(), A=qtoks(ans).map(n), T=qtoks(typed).map(n); return A.length===T.length && A.every((w,i)=>w===T[i]); };
 const qtoks = t => String(t||'').match(/[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*|[^\s\p{L}\p{N}]/gu)||[];
 const qkey = (w, accents) => { w=String(w).replace(/[“”]/g,'"').replace(/[‘’]/g,"'"); if(accents) w=w.normalize('NFD').replace(/[\u0300-\u036f]/g,''); return w.toLowerCase(); };
 function lcsGrade(E, T, accents){
@@ -999,7 +999,7 @@ function renderRollBoard(){
 }
 
 // ---------- error safety net ----------
-function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-31b'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
+function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-31c'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
   b.innerHTML='<span style="flex:1;word-break:break-word">Something broke: '+esc(msg)+'</span><button onclick="location.reload()" style="border:0;background:#fff;color:#B23A3A;border-radius:8px;padding:6px 10px;font:600 13px \'Public Sans\',sans-serif;cursor:pointer">Reload</button><button onclick="document.getElementById(\'errbar\').remove()" style="border:0;background:transparent;color:#fff;font-size:18px;cursor:pointer">×</button>'; }
 window.addEventListener('error', e=>{ showErr((e.message||'error')+' @'+(e.lineno||'?')); try{ render(); }catch(x){} });
 window.addEventListener('unhandledrejection', e=>{ showErr('async: '+((e.reason&&e.reason.message)||e.reason||'error')); });
