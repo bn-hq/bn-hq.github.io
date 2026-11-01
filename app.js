@@ -843,8 +843,9 @@ function diffHtml(ans, typed){ const n=w=>String(w).replace(/[“”]/g,'"').rep
   return out.map(([c,w])=>`<span class="tk ${c}">${esc(w)}</span>`).join(' ').replace(/ (<span class="tk [a-z]+">[,.;:!?)]<\/span>)/g,'$1'); }
 const diffLegend='<div class="legend"><span class="tk ok">green</span> right <span class="tk miss">red</span> missing, you left it out <span class="tk extra">struck</span> extra, not in the key</div>';
 let qz={phase:'pick', mode:'order', set:null, run:[], i:0, res:{}, input:'', g:null, draft:null};
-function qStart(set, mode){
-  let xs=qItems(set); if(mode==='missed') xs=xs.filter(x=>(qBest(me,set.id,x.id)||0)<100); if(mode==='shuffle') xs=shuffle(xs.slice());
+// only: retake exactly these question ids (the ones wrong in the run you just finished)
+function qStart(set, mode, only){
+  let xs=qItems(set); if(only) xs=xs.filter(x=>only.includes(x.id)); else if(mode==='missed') xs=xs.filter(x=>{ const r=S.recitals.find(r=>r.who===me&&r.passage===`quiz:${set.id}:${x.id}`); return !r||r.pct<100; }); // missed = your latest try wasn't word for word if(mode==='shuffle') xs=shuffle(xs.slice());
   if(!xs.length){ toast(mode==='missed'?'Nothing missed. Every question is at 100%.':'No questions in this set yet.'); return; }
   // the official questions are taken like the real quiz: all on one page, graded together at the end
   const test=set.id==='official';
@@ -871,7 +872,7 @@ function renderQuizzes(){
       qz.run.forEach(it=>{ qz.grades[it.id]=qGrade(it, qz.ans[it.id]||''); }); qz.phase='tested'; renderQuizzes(); scrollTo(0,0);
       const at=when(), ok=await commit(null, st=>{ qz.run.forEach(it=>st.recitals.unshift({who:me,at,passage:`quiz:${set.id}:${it.id}`,pct:qz.grades[it.id].pct})); });
       const l=quizEl.querySelector('#qlog'); if(l) l.textContent=ok?'Saved to your record.':'Not saved (see message).'; };
-    const rt=quizEl.querySelector('#qretry'); if(rt) rt.onclick=()=>qStart(set,'missed');
+    const rt=quizEl.querySelector('#qretry'); if(rt) rt.onclick=()=>qStart(set,'order',qz.run.filter(it=>!qz.grades[it.id]||qz.grades[it.id].pct<100).map(it=>it.id));
     const ag=quizEl.querySelector('#qagain'); if(ag) ag.onclick=()=>qStart(set,qz.mode==='missed'?'order':qz.mode);
     return;
   }
@@ -899,7 +900,7 @@ function renderQuizzes(){
     const vals=Object.values(qz.res), avg=vals.length?Math.round(vals.reduce((a,b)=>a+b,0)/vals.length):0, missed=vals.filter(v=>v<100).length;
     quizEl.innerHTML=`<div class="editor"><h2>${esc(set.title)}</h2><div class="big">${vals.length-missed}/${vals.length}<small> correct this run · ${missed} wrong</small></div>
       <div class="ctrl">${missed?'<button class="btn primary" id="qmiss">Re-quiz missed</button>':''}<button class="btn" id="qsets">Back to sets</button></div></div>`;
-    const qm=quizEl.querySelector('#qmiss'); if(qm) qm.onclick=()=>qStart(set,'missed');
+    const qm=quizEl.querySelector('#qmiss'); if(qm) qm.onclick=()=>qStart(set,'order',qz.run.filter(it=>(qz.res[it.id]??0)<100).map(it=>it.id));
     quizEl.querySelector('#qsets').onclick=()=>{ qz.phase='pick'; renderQuizzes(); };
     return;
   }
@@ -1006,7 +1007,7 @@ function renderRollBoard(){
 }
 
 // ---------- error safety net ----------
-function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-31d'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
+function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-11-01a'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
   b.innerHTML='<span style="flex:1;word-break:break-word">Something broke: '+esc(msg)+'</span><button onclick="location.reload()" style="border:0;background:#fff;color:#B23A3A;border-radius:8px;padding:6px 10px;font:600 13px \'Public Sans\',sans-serif;cursor:pointer">Reload</button><button onclick="document.getElementById(\'errbar\').remove()" style="border:0;background:transparent;color:#fff;font-size:18px;cursor:pointer">×</button>'; }
 window.addEventListener('error', e=>{ showErr((e.message||'error')+' @'+(e.lineno||'?')); try{ render(); }catch(x){} });
 window.addEventListener('unhandledrejection', e=>{ showErr('async: '+((e.reason&&e.reason.message)||e.reason||'error')); });
