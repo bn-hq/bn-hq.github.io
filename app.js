@@ -834,7 +834,14 @@ function anyOrderGrade(ans, typed){
   const hit=hits.filter(Boolean).length, extras=used.filter(u=>!u).length;
   return {ok, hit, total:parts.length, extras, pct:Math.max(0,Math.floor(100*hit/parts.length-0.5*extras)), ans};
 }
-function qGrade(item, typed){ if(item.anyOrder) return anyOrderGrade(item.a, typed); let best=null; for(const ans of [item.a].concat(item.alt||[])){ const g=lcsGrade(qtoks(ans),qtoks(typed),false); g.ans=ans; if(!best||g.pct>best.pct) best=g; } return best; }
+// Quizzes are all or nothing: 100 if word for word with the key (or an accepted alternate), else 0. Capitals and spacing don't matter.
+function qGrade(item, typed){ if(item.anyOrder){ const g=anyOrderGrade(item.a, typed); g.pct=g.pct===100?100:0; g.typed=typed; return g; } let best=null; for(const ans of [item.a].concat(item.alt||[])){ const g=lcsGrade(qtoks(ans),qtoks(typed),false); g.ans=ans; g.typed=typed; g.pct=qExact(ans,typed)?100:0; if(!best||g.pct>best.pct||(g.pct===best.pct&&g.hit>best.hit)) best=g; } return best; }
+// Word-by-word comparison of the typed answer against the key: what matched, what's missing, what's extra
+function diffHtml(ans, typed){ const n=w=>String(w).replace(/[“”]/g,'"').replace(/[‘’]/g,"'").toLowerCase(), A=qtoks(ans), T=qtoks(typed), a=A.map(n), b=T.map(n), m=a.length, k=b.length, dp=Array.from({length:m+1},()=>new Int32Array(k+1));
+  for(let i=m-1;i>=0;i--) for(let j=k-1;j>=0;j--) dp[i][j]=a[i]===b[j]?dp[i+1][j+1]+1:Math.max(dp[i+1][j],dp[i][j+1]);
+  const out=[]; let i=0,j=0; while(i<m||j<k){ if(i<m&&j<k&&a[i]===b[j]){ out.push(['ok',A[i]]); i++; j++; } else if(j<k&&(i>=m||dp[i][j+1]>=dp[i+1][j])){ out.push(['extra',T[j]]); j++; } else { out.push(['miss',A[i]]); i++; } }
+  return out.map(([c,w])=>`<span class="tk ${c}">${esc(w)}</span>`).join(' ').replace(/ (<span class="tk [a-z]+">[,.;:!?)]<\/span>)/g,'$1'); }
+const diffLegend='<div class="legend"><span class="tk ok">green</span> right <span class="tk miss">red</span> missing, you left it out <span class="tk extra">struck</span> extra, not in the key</div>';
 let qz={phase:'pick', mode:'order', set:null, run:[], i:0, res:{}, input:'', g:null, draft:null};
 function qStart(set, mode){
   let xs=qItems(set); if(mode==='missed') xs=xs.filter(x=>(qBest(me,set.id,x.id)||0)<100); if(mode==='shuffle') xs=shuffle(xs.slice());
@@ -854,14 +861,14 @@ function renderQuizzes(){
       ${done?`<div class="editor"><div class="big">${perfect}/${qz.run.length}<small> correct · ${Math.round(100*perfect/qz.run.length)}% · word for word · 90% to pass</small></div><div class="status" id="qlog">Saving…</div></div>`:''}
       ${qz.run.map((it,k)=>{ const g=qz.grades[it.id]; return `<div class="editor"><h2 class="qq">${k+1}. ${esc(it.q)}</h2>
         <div class="field"><textarea data-ta="${esc(it.id)}" rows="${it.a.length>120?5:2}" ${done?'readonly':''}>${esc(qz.ans[it.id]||'')}</textarea></div>
-        ${g?`<div class="big" style="font-size:20px;color:${g.pct===100?'var(--ok,#2e7d32)':'var(--bad,#B23A3A)'}">${g.pct===100?'Correct':'Wrong'}</div>${g.pct<100?`<div class="passage" style="margin-top:6px">${tokHtml(qtoks(g.ans),g.ok)}</div>`:''}`:''}</div>`; }).join('')}
+        ${g?`<div class="big" style="font-size:20px;color:${g.pct===100?'var(--ok,#2e7d32)':'var(--bad,#B23A3A)'}">${g.pct===100?'Correct':'Wrong'}</div>${g.pct<100?`<div class="passage" style="margin-top:6px">${diffHtml(g.ans||it.a,g.typed||'')}</div>${diffLegend}`:''}`:''}</div>`; }).join('')}
       <div class="ctrl">${done?`${perfect<qz.run.length?'<button class="btn primary" id="qretry">Retake missed</button>':''}<button class="btn" id="qagain">Retake all</button>`:'<button class="btn primary" id="qcheck">Check all</button>'}</div>
-      ${done?'<div class="legend"><span class="tk ok">green</span> matched <span class="tk miss">red</span> missed</div>':''}`;
+      `;
     quizEl.querySelector('#qback').onclick=()=>{ qz.phase='pick'; renderQuizzes(); };
     quizEl.querySelectorAll('[data-ta]').forEach(t=>t.oninput=()=>{ qz.ans[t.dataset.ta]=t.value; });
     const ck=quizEl.querySelector('#qcheck'); if(ck) ck.onclick=async()=>{ if(!me){ askName(); return; }
       const blank=qz.run.filter(it=>!(qz.ans[it.id]||'').trim()).length; if(blank&&!confirm(`${blank} question${blank===1?' is':'s are'} blank. Check anyway?`)) return;
-      qz.run.forEach(it=>{ const t=qz.ans[it.id]||'', g=qGrade(it, t); g.pct=qExact(it.a, t)?100:0; qz.grades[it.id]=g; }); // official quiz: word for word (punctuation counts; capitals and spacing don't) or it's wrong qz.phase='tested'; renderQuizzes(); scrollTo(0,0);
+      qz.run.forEach(it=>{ qz.grades[it.id]=qGrade(it, qz.ans[it.id]||''); }); qz.phase='tested'; renderQuizzes(); scrollTo(0,0);
       const at=when(), ok=await commit(null, st=>{ qz.run.forEach(it=>st.recitals.unshift({who:me,at,passage:`quiz:${set.id}:${it.id}`,pct:qz.grades[it.id].pct})); });
       const l=quizEl.querySelector('#qlog'); if(l) l.textContent=ok?'Saved to your record.':'Not saved (see message).'; };
     const rt=quizEl.querySelector('#qretry'); if(rt) rt.onclick=()=>qStart(set,'missed');
@@ -873,7 +880,7 @@ function renderQuizzes(){
     quizEl.innerHTML=`<div class="ctrl" style="justify-content:space-between;align-items:center"><span class="status" style="margin:0">${esc(set.title)} · question ${qz.i+1} of ${qz.run.length}</span><button class="small" id="qback">Back to sets</button></div>
       <div class="editor"><h2 class="qq">${esc(it.q)}</h2>
         <div class="field"><textarea id="qa" rows="3" placeholder="Type the answer exactly. Capitals don't matter; spelling and punctuation do." ${qz.phase==='checked'?'readonly':''}>${esc(qz.input)}</textarea></div>
-        ${qz.phase==='checked'?`<div class="big">${g.pct}%<small> · ${g.hit}/${g.total} · ${g.extras} extra</small></div><div class="passage" style="margin-top:6px">${tokHtml(qtoks(g.ans),g.ok)}</div><div class="legend"><span class="tk ok">green</span> matched <span class="tk miss">red</span> missed</div><div class="status" id="qlog">Saving…</div>`:''}
+        ${qz.phase==='checked'?`<div class="big" style="font-size:20px;color:${g.pct===100?'var(--good)':'var(--bad)'}">${g.pct===100?'Correct':'Wrong'}</div>${g.pct<100?`<div class="passage" style="margin-top:6px">${diffHtml(g.ans||it.a,g.typed||'')}</div>${diffLegend}`:''}<div class="status" id="qlog">Saving…</div>`:''}
         <div class="ctrl"><button class="btn primary" id="qgo">${qz.phase==='checked'?(qz.i+1<qz.run.length?'Next':'Finish'):'Check'}</button></div></div>`;
     const ta=quizEl.querySelector('#qa'); ta.oninput=()=>{ qz.input=ta.value; };
     ta.onkeydown=e=>{ if(e.key==='Enter'&&(e.metaKey||e.ctrlKey)){ e.preventDefault(); quizEl.querySelector('#qgo').click(); } };
@@ -890,7 +897,7 @@ function renderQuizzes(){
   }
   if(qz.phase==='done'&&set){
     const vals=Object.values(qz.res), avg=vals.length?Math.round(vals.reduce((a,b)=>a+b,0)/vals.length):0, missed=vals.filter(v=>v<100).length;
-    quizEl.innerHTML=`<div class="editor"><h2>${esc(set.title)}</h2><div class="big">${avg}%<small> average this run · ${missed} below 100%</small></div>
+    quizEl.innerHTML=`<div class="editor"><h2>${esc(set.title)}</h2><div class="big">${vals.length-missed}/${vals.length}<small> correct this run · ${missed} wrong</small></div>
       <div class="ctrl">${missed?'<button class="btn primary" id="qmiss">Re-quiz missed</button>':''}<button class="btn" id="qsets">Back to sets</button></div></div>`;
     const qm=quizEl.querySelector('#qmiss'); if(qm) qm.onclick=()=>qStart(set,'missed');
     quizEl.querySelector('#qsets').onclick=()=>{ qz.phase='pick'; renderQuizzes(); };
@@ -999,7 +1006,7 @@ function renderRollBoard(){
 }
 
 // ---------- error safety net ----------
-function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-31c'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
+function showErr(msg){ try{ fetch(DB+'/errors.json',{method:'POST',body:JSON.stringify({msg:String(msg).slice(0,500),at:new Date().toISOString(),who:me,mode,view,ua:navigator.userAgent.slice(0,120),build:'2026-10-31d'})}); }catch(e){} let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:70;background:#B23A3A;color:#fff;padding:10px 14px;font:600 13px "Public Sans",sans-serif;display:flex;gap:10px;align-items:center;justify-content:space-between'; document.body.appendChild(b); }
   b.innerHTML='<span style="flex:1;word-break:break-word">Something broke: '+esc(msg)+'</span><button onclick="location.reload()" style="border:0;background:#fff;color:#B23A3A;border-radius:8px;padding:6px 10px;font:600 13px \'Public Sans\',sans-serif;cursor:pointer">Reload</button><button onclick="document.getElementById(\'errbar\').remove()" style="border:0;background:transparent;color:#fff;font-size:18px;cursor:pointer">×</button>'; }
 window.addEventListener('error', e=>{ showErr((e.message||'error')+' @'+(e.lineno||'?')); try{ render(); }catch(x){} });
 window.addEventListener('unhandledrejection', e=>{ showErr('async: '+((e.reason&&e.reason.message)||e.reason||'error')); });
