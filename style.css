@@ -139,7 +139,8 @@ header small{color:var(--ink2);font-size:12px;text-transform:uppercase;letter-sp
 .passage p{margin:0}
 .passage .tk{padding:0 1px;border-radius:3px}
 .tk.ok{background:rgba(31,122,77,.18)}
-.tk.miss{background:rgba(178,58,58,.22);text-decoration:underline}
+.tk.miss{background:rgba(178,58,58,.22);text-decoration:underline;font-weight:600}
+.tk.extra{background:rgba(178,58,58,.10);color:var(--bad);text-decoration:line-through}
 .tk.near{background:rgba(199,154,43,.3)}
 .heard{background:var(--bg);border:1px dashed var(--line);border-radius:12px;padding:10px 12px;margin-top:10px;font-size:14px;min-height:56px;white-space:pre-wrap}
 .heard .interim{color:var(--ink2)}
