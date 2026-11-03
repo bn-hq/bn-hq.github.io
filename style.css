@@ -119,6 +119,7 @@ header small{color:var(--ink2);font-size:12px;text-transform:uppercase;letter-sp
 [hidden]{display:none!important}
 .sub{display:flex;gap:6px;margin-top:12px;flex-wrap:wrap}
 .sub button{min-height:44px;border:1px solid var(--line);background:var(--panel);color:var(--ink2);border-radius:10px;padding:7px 12px;font:600 13px "Public Sans",sans-serif;cursor:pointer}
+.sub a.sublink{display:inline-flex;align-items:center;min-height:44px;box-sizing:border-box;border:1px solid var(--line);background:var(--panel);color:var(--ink2);border-radius:10px;padding:7px 12px;font:600 13px "Public Sans",sans-serif;text-decoration:none}
 .sub button[aria-pressed="true"]{background:var(--gold2);border-color:var(--gold);color:var(--ink)}
 .task{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-top:10px}
 .task .t{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
